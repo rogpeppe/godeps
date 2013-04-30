@@ -112,7 +112,7 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	for proj, infos := range infoByProject {
 		if len(infos) > 1 {
 			for _, info := range infos {
-				errorf("ambiguous VCS for %q at %q", proj, info.dir)
+				errorf("ambiguous VCS (%s) for %q at %q", info.vcs.Kind(), proj, info.dir)
 			}
 		}
 		for _, info := range infos {
@@ -343,7 +343,7 @@ func (bzrVCS) Update(dir string, revid string) error {
 	return err
 }
 
-var validHgInfo = regexp.MustCompile(`^([a-f0-9]+) ([0-9]+)$`)
+var validHgInfo = regexp.MustCompile(`^([a-f0-9]+)\+? ([0-9]+)\+?$`)
 
 type hgVCS struct{}
 
@@ -354,7 +354,7 @@ func (hgVCS) Info(dir string) (VCSInfo, error) {
 	}
 	m := validHgInfo.FindStringSubmatch(strings.TrimSpace(out))
 	if m == nil {
-		return VCSInfo{}, fmt.Errorf("bzr revision-info has unexpected result %q", out)
+		return VCSInfo{}, fmt.Errorf("hg identify has unexpected result %q", out)
 	}
 	// TODO(rog) check that tree is clean
 	return VCSInfo{
