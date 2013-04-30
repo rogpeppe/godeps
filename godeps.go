@@ -63,7 +63,52 @@ func main() {
 }
 
 func update(file string) {
-	errorf("update not yet implemented")
+	projects, err := parseDepFile(file)
+	if err != nil {
+		errorf("cannot parse %q: %v", file, err)
+		return
+	}
+	// First get info on all the projects
+	for proj, info := range projects {
+		err := proj.vcs.Update(info.dir, info.revid)
+		if err != nil {
+			
+		}
+	}
+}
+
+func parseDepFile(file string) (map[string] *depInfo, error) {
+	f, err := os.Open(file) {
+	if err != nil {
+		return nil, err
+	}
+	deps := make(map[string] *depInfo)
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadString("\n")
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read error: %v", err)
+		}
+		if line[len(line)-1] == '\n' {
+			line = line[0:len(line)-1]
+		}
+		info, err := parseDepInfo(line)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse %q: %v", line, err)
+		}
+		if deps[info.project] != nil {
+			return nil, fmt.Errorf("project %q has more than one entry", info.project)
+		}
+		deps[info.project] = info
+		info.dir, err = projectToDir(proj)
+		if err != nil {
+			return nil, fmt.Errorf("cannot find directory for %q: %v", proj, err)
+		}
+	}
+	return deps, nil
 }
 
 func list(pkgs []string, testDeps bool) []*depInfo {
@@ -143,6 +188,17 @@ func dirToProject(dir string) (string, error) {
 	return "", fmt.Errorf("project directory not found in GOPATH or GOROOT")
 }
 
+func projectToDir(proj string) (string, error) {
+	for _, p := range filepath.SplitList(buildContext.GOPATH) {
+		dir := filepath.Join(p, "src", filepath.FromSlash(proj))
+		info, err := os.Stat(dir)
+		if err == nil && info.IsDir() {
+			return dir, nil
+		}
+	}
+	return "", fmt.Errorf("not found in GOPATH")
+}
+
 // relativeToParent returns whether the child
 // path is under (or the same as) the parent path,
 // and if so returns the trailing portion of the
@@ -185,6 +241,33 @@ type depInfo struct {
 
 func (info *depInfo) String() string {
 	return fmt.Sprintf("%s\t%s\t%s\t%s", info.project, info.vcs.Kind(), info.revid, info.revno)
+}
+
+// parseDepInfo parses a dependency info line as printed by
+// depInfo.String.
+func parseDepInfo(s string) (*depInfo, error) {
+	fields := strings.Split(s, "\t")
+	if len(fields) != 4 {
+		return nil, fmt.Errorf("expected 4 tab-separated fields, got %d", len(fields))
+	}
+	info := &depInfo{
+		project: fields[0],
+		vcs: kindToVCS[fields[1]],
+		VCSInfo: VCSInfo{
+			revid: fields[2],
+			revno: fields[3],
+		},
+	}
+	if info.vcs == nil {
+		return nil, fmt.Errorf("unknown VCS kind %q", fields[1])
+	}
+	if info.project == "" {
+		return nil, fmt.Errorf("empty project field")
+	}
+	if info.revid == "" {
+		return nil, fmt.Errorf("empty revision id")
+	}
+	return info, nil
 }
 
 // findVCSInfo searches for VCS info for the given directory
@@ -308,7 +391,7 @@ func (ctxt *walkContext) walkDeps(pkgPath string) {
 type VCS interface {
 	Kind() string
 	Info(dir string) (VCSInfo, error)
-	Update(dir, info string) error
+	Update(dir, revid string) error
 }
 
 type VCSInfo struct {
@@ -319,6 +402,11 @@ type VCSInfo struct {
 var metadataDirs = map[string]VCS{
 	".bzr": bzrVCS{},
 	".hg":  hgVCS{},
+}
+
+var kindToVCS = map[string]VCS {
+	"bzr": bzrVCS{},
+	"hg": hgVCS{},
 }
 
 // TODO git
