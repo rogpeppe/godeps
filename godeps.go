@@ -168,6 +168,9 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 			if ignoreDirs[info.dir] {
 				continue
 			}
+			if !info.clean {
+				errorf("%s repository at %q is not clean; revision id may not reflect the code", info.vcs.Kind(), info.dir)
+			}
 			info.project = proj
 			deps = append(deps, info)
 		}
@@ -397,6 +400,7 @@ type VCS interface {
 type VCSInfo struct {
 	revid string
 	revno string // optional
+	clean bool
 }
 
 var metadataDirs = map[string]VCS{
@@ -420,6 +424,7 @@ func (bzrVCS) Kind() string {
 }
 
 var validBzrInfo = regexp.MustCompile(`^([0-9]+) ([^ \t]+)$`)
+var shelveLine = regexp.MustCompile(`^[0-9]+ shelves exist\.`)
 
 func (bzrVCS) Info(dir string) (VCSInfo, error) {
 	out, err := runCmd(dir, "bzr", "revision-info", "--tree")
@@ -430,10 +435,24 @@ func (bzrVCS) Info(dir string) (VCSInfo, error) {
 	if m == nil {
 		return VCSInfo{}, fmt.Errorf("bzr revision-info has unexpected result %q", out)
 	}
-	// TODO(rog) check that tree is clean
+
+	out, err = runCmd(dir, "bzr", "status", "-S")
+	if err != nil {
+		return VCSInfo{}, err
+	}
+	clean := true
+	statusLines := strings.Split(out, "\n")
+	for _, line := range statusLines {
+		if line == "" || shelveLine.MatchString(line) {
+			continue
+		}
+		clean = false
+		break
+	}
 	return VCSInfo{
 		revid: m[2],
 		revno: m[1],
+		clean: clean,
 	}, nil
 }
 
@@ -455,10 +474,18 @@ func (hgVCS) Info(dir string) (VCSInfo, error) {
 	if m == nil {
 		return VCSInfo{}, fmt.Errorf("hg identify has unexpected result %q", out)
 	}
+	// The +" in the identify output tags clean status, but
+	// only for existing files. We need to know about extra
+	// files too, so need the results of the status command.
+	out, err = runCmd(dir, "hg", "status")
+	if err != nil {
+		return VCSInfo{}, err
+	}
 	// TODO(rog) check that tree is clean
 	return VCSInfo{
 		revid: m[1],
 		revno: m[2],
+		clean: out == "",
 	}, nil
 }
 
@@ -484,7 +511,8 @@ func runCmd(dir string, name string, args ...string) (string, error) {
 	if _, ok := err.(*exec.ExitError); ok && errData.Len() > 0 {
 		return "", errors.New(strings.TrimSpace(errData.String()))
 	}
-	return "", fmt.Errorf("cannot run %q: %v", name, err)
+
+	return "", fmt.Errorf("cannot run %q: %v", append([]string{name}, args...), err)
 }
 
 var errorf = func(f string, a ...interface{}) {
