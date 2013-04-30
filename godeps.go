@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"go/build"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,24 +70,50 @@ func update(file string) {
 		errorf("cannot parse %q: %v", file, err)
 		return
 	}
-	// First get info on all the projects
+	// First get info on all the projects, make sure their working
+	// directories are all clean and prune out the ones which
+	// don't need updating.
+	failed := false
 	for proj, info := range projects {
-		err := proj.vcs.Update(info.dir, info.revid)
+		currentInfo, err := info.vcs.Info(info.dir)
 		if err != nil {
-			
+			errorf("cannot get information on %q: %v", info.dir, err)
+			failed = true
+			continue
 		}
+		if !currentInfo.clean {
+			errorf("%q is not clean", info.dir)
+			failed = true
+			continue
+		}
+		if currentInfo.revid == info.revid {
+			// No need to update.
+			delete(projects, proj)
+		}
+	}
+	if failed {
+		return
+	}
+	for _, info := range projects {
+		err := info.vcs.Update(info.dir, info.revid)
+		if err != nil {
+			errorf("cannot update %q: %v", info.dir, err)
+			return
+		}
+		fmt.Printf("%q now at %s\n", info.dir, info.revid)
 	}
 }
 
-func parseDepFile(file string) (map[string] *depInfo, error) {
-	f, err := os.Open(file) {
+func parseDepFile(file string) (map[string]*depInfo, error) {
+	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
-	deps := make(map[string] *depInfo)
+	defer f.Close()
+	deps := make(map[string]*depInfo)
 	r := bufio.NewReader(f)
 	for {
-		line, err := r.ReadString("\n")
+		line, err := r.ReadString('\n')
 		if err == io.EOF {
 			break
 		}
@@ -93,7 +121,7 @@ func parseDepFile(file string) (map[string] *depInfo, error) {
 			return nil, fmt.Errorf("read error: %v", err)
 		}
 		if line[len(line)-1] == '\n' {
-			line = line[0:len(line)-1]
+			line = line[0 : len(line)-1]
 		}
 		info, err := parseDepInfo(line)
 		if err != nil {
@@ -103,9 +131,9 @@ func parseDepFile(file string) (map[string] *depInfo, error) {
 			return nil, fmt.Errorf("project %q has more than one entry", info.project)
 		}
 		deps[info.project] = info
-		info.dir, err = projectToDir(proj)
+		info.dir, err = projectToDir(info.project)
 		if err != nil {
-			return nil, fmt.Errorf("cannot find directory for %q: %v", proj, err)
+			return nil, fmt.Errorf("cannot find directory for %q: %v", info.project, err)
 		}
 	}
 	return deps, nil
@@ -255,7 +283,7 @@ func parseDepInfo(s string) (*depInfo, error) {
 	}
 	info := &depInfo{
 		project: fields[0],
-		vcs: kindToVCS[fields[1]],
+		vcs:     kindToVCS[fields[1]],
 		VCSInfo: VCSInfo{
 			revid: fields[2],
 			revno: fields[3],
@@ -408,9 +436,9 @@ var metadataDirs = map[string]VCS{
 	".hg":  hgVCS{},
 }
 
-var kindToVCS = map[string]VCS {
+var kindToVCS = map[string]VCS{
 	"bzr": bzrVCS{},
-	"hg": hgVCS{},
+	"hg":  hgVCS{},
 }
 
 // TODO git
