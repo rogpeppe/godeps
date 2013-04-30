@@ -71,16 +71,18 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	// We want to ignore the go core source and the projects
 	// for the root packages. Do this by getting leaf dependency info
 	// for all those things and adding them to an ignore list.
+	ignoreDirs := map[string]bool{
+		filepath.Clean(buildContext.GOROOT): true,
+	}
 	for _, pkgPath := range pkgs {
 		pkg, err := buildContext.Import(pkgPath, ".", build.FindOnly)
 		if err != nil {
 			errorf("cannot find %q: %v", pkgPath, err)
 			continue
 		}
-		findDepInfo(pkg.Dir, infoByDir)
-	}
-	ignoreDirs := map[string]bool{
-		filepath.Clean(buildContext.GOROOT): true,
+		if !findVCSInfo(pkg.Dir, infoByDir) {
+			ignoreDirs[pkg.Dir] = true
+		}
 	}
 	for dir := range infoByDir {
 		ignoreDirs[dir] = true
@@ -90,7 +92,9 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 			errorf("cannot import %q: %v", pkg.Name, err)
 			return false
 		}
-		findDepInfo(pkg.Dir, infoByDir)
+		if !findVCSInfo(pkg.Dir, infoByDir) && !ignoreDirs[pkg.Dir] {
+			errorf("no version control system found for %q", pkg.Dir)
+		}
 		return true
 	})
 	// We make a new map because dependency information
@@ -166,7 +170,10 @@ func (s depInfoSlice) Less(i, j int) bool {
 	if p.project != q.project {
 		return p.project < q.project
 	}
-	return p.vcs.Kind() < q.vcs.Kind()
+	if p.vcs.Kind() != q.vcs.Kind() {
+		return p.vcs.Kind() < q.vcs.Kind()
+	}
+	return p.dir < q.dir
 }
 
 type depInfo struct {
@@ -180,21 +187,25 @@ func (info *depInfo) String() string {
 	return fmt.Sprintf("%s\t%s\t%s\t%s", info.project, info.vcs.Kind(), info.revid, info.revno)
 }
 
-func findDepInfo(dir string, infoByDir map[string][]*depInfo) {
+// findVCSInfo searches for VCS info for the given directory
+// and adds any found to infoByDir, searching each parent
+// directory in turn. It returns whether any information was
+// found.
+func findVCSInfo(dir string, infoByDir map[string][]*depInfo) bool {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		errorf("cannot find absolute path of %q", dir)
-		return
+		return false
 	}
 	dirs := parents(dir)
 	// Check from the root down that there is no
 	// existing information for any parent directory.
 	for i := len(dirs) - 1; i >= 0; i-- {
 		if info := infoByDir[dirs[i]]; info != nil {
-			return
+			return true
 		}
 	}
-	// Check from dir upwards to find an SCS directory
+	// Check from dir upwards to find a VCS directory
 	for _, dir := range dirs {
 		nfound := 0
 		for metaDir, vcs := range metadataDirs {
@@ -213,10 +224,10 @@ func findDepInfo(dir string, infoByDir map[string][]*depInfo) {
 			}
 		}
 		if nfound > 0 {
-			return
+			return true
 		}
 	}
-	errorf("no version control system found for %q", dir)
+	return false
 }
 
 // parents returns the given path and all its parents.
