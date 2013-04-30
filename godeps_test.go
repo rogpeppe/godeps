@@ -7,6 +7,7 @@ import (
 	. "launchpad.net/gocheck"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -75,8 +76,10 @@ multirepo bzr 1
 multirepo hg 0
 `[1:],
 	errors: []string{
-		`ambiguous VCS \(bzr\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
-		`ambiguous VCS \(hg\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
+		`ambiguous VCS (bzr) for "multirepo" at "$tmp/p1/src/multirepo"`,
+		`ambiguous VCS (hg) for "multirepo" at "$tmp/p1/src/multirepo"`,
+		`bzr repository at "$tmp/p1/src/multirepo" is not clean; revision id may not reflect the code`,
+		`hg repository at "$tmp/p1/src/multirepo" is not clean; revision id may not reflect the code`,
 	}}, {
 	about: "ambiguous dependency across different GOPATH elements",
 	args:  []string{"ambiguous2"},
@@ -86,10 +89,21 @@ multirepo hg 0
 multirepo hg 0
 `[1:],
 	errors: []string{
-		`ambiguous VCS \(bzr\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
-		`ambiguous VCS \(hg\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
-		`ambiguous VCS \(hg\) for "multirepo" at "[^"]*/p2/src/multirepo"`,
-	}}}
+		`ambiguous VCS (bzr) for "multirepo" at "$tmp/p1/src/multirepo"`,
+		`ambiguous VCS (hg) for "multirepo" at "$tmp/p1/src/multirepo"`,
+		`ambiguous VCS (hg) for "multirepo" at "$tmp/p2/src/multirepo"`,
+		`bzr repository at "$tmp/p1/src/multirepo" is not clean; revision id may not reflect the code`,
+		`hg repository at "$tmp/p1/src/multirepo" is not clean; revision id may not reflect the code`,
+	}}, {
+	about: "unclean hg",
+	args:  []string{"hgunclean-root"},
+	result: `
+hgunclean hg 0
+`[1:],
+	errors: []string{
+		`hg repository at "$tmp/p1/src/hgunclean" is not clean; revision id may not reflect the code`,
+	},
+}}
 
 func (s *suite) TestList(c *C) {
 	dir := c.MkDir()
@@ -112,6 +126,14 @@ func (s *suite) TestList(c *C) {
 			deps: []string{"multirepo/x", "multirepo/y"},
 		},
 		"multirepo/x": {},
+		"bzrunclean-root": {
+			deps: []string{"bzrunclean"},
+		},
+		"bzrunclean": {},
+		"hgunclean-root": {
+			deps: []string{"hgunclean"},
+		},
+		"hgunclean": {},
 	})
 	writePackages(c, gopath[1], "v1", map[string]packageSpec{
 		"bar/bar1": {
@@ -142,10 +164,20 @@ func (s *suite) TestList(c *C) {
 	// deliberately omit ambiguous2
 	goInitRepo("bzr", gopath[0], "multirepo")
 	goInitRepo("hg", gopath[0], "multirepo")
+	goInitRepo("bzr", gopath[0], "bzrunclean")
+	goInitRepo("hg", gopath[0], "hgunclean")
+
 	goInitRepo("bzr", gopath[1], "bar")
 	goInitRepo("hg", gopath[1], "foo")
 	goInitRepo("hg", gopath[1], "multirepo")
 	wg.Wait()
+
+	// unclean repos
+	for _, pkg := range []string{"hgunclean", "bzrunclean"} {
+		f, err := os.Create(filepath.Join(pkgDir(gopath[0], pkg), "extra"))
+		c.Assert(err, IsNil)
+		f.Close()
+	}
 
 	buildContext.GOPATH = strings.Join(gopath, string(filepath.ListSeparator))
 
@@ -156,7 +188,11 @@ func (s *suite) TestList(c *C) {
 
 		c.Assert(s.errors, HasLen, len(test.errors))
 		for i, e := range s.errors {
-			c.Check(e, Matches, test.errors[i], Commentf("error %d", i))
+			s.errors[i] = strings.Replace(e, dir, "$tmp", -1)
+		}
+		sort.Strings(test.errors)
+		for i, e := range s.errors {
+			c.Check(e, Equals, test.errors[i], Commentf("error %d", i))
 		}
 
 		// Check that rev ids are non-empty, but don't check specific values.
@@ -170,10 +206,14 @@ func (s *suite) TestList(c *C) {
 	}
 }
 
+func pkgDir(rootDir string, pkg string) string {
+	return filepath.Join(rootDir, "src", filepath.FromSlash(pkg))
+}
+
 func initRepo(c *C, kind, rootDir, pkg string) {
 	// This relies on the fact that hg, bzr and git
 	// all use the same command to initialize a directory.
-	dir := filepath.Join(rootDir, "src", filepath.FromSlash(pkg))
+	dir := pkgDir(rootDir, pkg)
 	_, err := runCmd(dir, kind, "init")
 	if !c.Check(err, IsNil) {
 		return
@@ -199,13 +239,12 @@ type packageSpec struct {
 }
 
 func writePackages(c *C, rootDir string, version string, pkgs map[string]packageSpec) {
-	srcDir := filepath.Join(rootDir, "src")
 	for name, pkg := range pkgs {
-		pkgDir := filepath.Join(srcDir, name)
-		err := os.MkdirAll(pkgDir, 0777)
+		dir := pkgDir(rootDir, name)
+		err := os.MkdirAll(dir, 0777)
 		c.Assert(err, IsNil)
 		writeFile := func(fileName, pkgIdent string, deps []string) {
-			err := writePackageFile(filepath.Join(pkgDir, fileName), pkgIdent, version, deps)
+			err := writePackageFile(filepath.Join(dir, fileName), pkgIdent, version, deps)
 			c.Assert(err, IsNil)
 		}
 		writeFile("x.go", "x", pkg.deps)
