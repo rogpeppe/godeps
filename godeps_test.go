@@ -67,7 +67,29 @@ foo hg 0
 foo/foo2 hg 0
 khroomph bzr 1
 `[1:],
-}}
+}, {
+	about: "ambiguous dependency",
+	args:  []string{"ambiguous1"},
+	result: `
+multirepo bzr 1
+multirepo hg 0
+`[1:],
+	errors: []string{
+		`ambiguous VCS \(bzr\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
+		`ambiguous VCS \(hg\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
+	}}, {
+	about: "ambiguous dependency across different GOPATH elements",
+	args:  []string{"ambiguous2"},
+	result: `
+multirepo bzr 1
+multirepo hg 0
+multirepo hg 0
+`[1:],
+	errors: []string{
+		`ambiguous VCS \(bzr\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
+		`ambiguous VCS \(hg\) for "multirepo" at "[^"]*/p1/src/multirepo"`,
+		`ambiguous VCS \(hg\) for "multirepo" at "[^"]*/p2/src/multirepo"`,
+	}}}
 
 func (s *suite) TestList(c *C) {
 	dir := c.MkDir()
@@ -83,6 +105,13 @@ func (s *suite) TestList(c *C) {
 		},
 		"baz/baz1":     {},
 		"khroomph/khr": {},
+		"ambiguous1": {
+			deps: []string{"multirepo/x"},
+		},
+		"ambiguous2": {
+			deps: []string{"multirepo/x", "multirepo/y"},
+		},
+		"multirepo/x": {},
 	})
 	writePackages(c, gopath[1], "v1", map[string]packageSpec{
 		"bar/bar1": {
@@ -91,10 +120,11 @@ func (s *suite) TestList(c *C) {
 		"bar/bar2": {
 			deps: []string{"bar/bar3"},
 		},
-		"bar/bar3": {},
-		"bar/bar4": {},
-		"foo/foo1": {},
-		"foo/foo3": {},
+		"bar/bar3":    {},
+		"bar/bar4":    {},
+		"foo/foo1":    {},
+		"foo/foo3":    {},
+		"multirepo/y": {},
 	})
 	var wg sync.WaitGroup
 	goInitRepo := func(kind string, rootDir string, pkg string) {
@@ -108,16 +138,26 @@ func (s *suite) TestList(c *C) {
 	goInitRepo("hg", gopath[0], "foo/foo2")
 	goInitRepo("bzr", gopath[0], "baz")
 	goInitRepo("bzr", gopath[0], "khroomph")
+	goInitRepo("bzr", gopath[0], "ambiguous1")
+	// deliberately omit ambiguous2
+	goInitRepo("bzr", gopath[0], "multirepo")
+	goInitRepo("hg", gopath[0], "multirepo")
 	goInitRepo("bzr", gopath[1], "bar")
 	goInitRepo("hg", gopath[1], "foo")
+	goInitRepo("hg", gopath[1], "multirepo")
 	wg.Wait()
 
 	buildContext.GOPATH = strings.Join(gopath, string(filepath.ListSeparator))
 
 	for i, test := range listTests {
 		c.Logf("test %d. %s", i, test.about)
-		deps := list([]string{"foo/foo1"}, test.testDeps)
-		c.Check(s.errors, HasLen, 0)
+		s.errors = nil
+		deps := list(test.args, test.testDeps)
+
+		c.Assert(s.errors, HasLen, len(test.errors))
+		for i, e := range s.errors {
+			c.Check(e, Matches, test.errors[i], Commentf("error %d", i))
+		}
 
 		// Check that rev ids are non-empty, but don't check specific values.
 		result := ""
