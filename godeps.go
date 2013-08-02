@@ -157,6 +157,9 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 			ignoreDirs[pkg.Dir] = true
 		}
 	}
+	// Ignore the packages directly specified on the
+	// command line, as we want to print the versions
+	// of their dependencies, not their versions themselves.
 	for dir := range infoByDir {
 		ignoreDirs[dir] = true
 	}
