@@ -492,12 +492,12 @@ func (bzrVCS) Update(dir string, revid string) error {
 	return err
 }
 
-var validHgInfo = regexp.MustCompile(`^([a-f0-9]+)\+? ([0-9]+)\+?$`)
+var validHgInfo = regexp.MustCompile(`^([a-f0-9]+) ([0-9]+)$`)
 
 type hgVCS struct{}
 
 func (hgVCS) Info(dir string) (VCSInfo, error) {
-	out, err := runCmd(dir, "hg", "identify", "-n", "-i")
+	out, err := runCmd(dir, "hg", "log", "-l", "1", "-r", ".", "--template", "{node} {rev}")
 	if err != nil {
 		return VCSInfo{}, err
 	}
@@ -505,9 +505,6 @@ func (hgVCS) Info(dir string) (VCSInfo, error) {
 	if m == nil {
 		return VCSInfo{}, fmt.Errorf("hg identify has unexpected result %q", out)
 	}
-	// The +" in the identify output tags clean status, but
-	// only for existing files. We need to know about extra
-	// files too, so need the results of the status command.
 	out, err = runCmd(dir, "hg", "status")
 	if err != nil {
 		return VCSInfo{}, err
