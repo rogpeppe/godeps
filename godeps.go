@@ -18,6 +18,7 @@ import (
 
 var revFile = flag.String("u", "", "file containing desired revisions")
 var testDeps = flag.Bool("t", false, "include testing dependencies in output")
+var printCommands = flag.Bool("x", false, "show executed commands")
 
 var exitCode = 0
 
@@ -528,6 +529,9 @@ func (hgVCS) Update(dir string, revid string) error {
 
 func runCmd(dir string, name string, args ...string) (string, error) {
 	var outData, errData bytes.Buffer
+	if *printCommands {
+		printShellCommand(dir, name, args)
+	}
 	c := exec.Command(name, args...)
 	c.Stdout = &outData
 	c.Stderr = &errData
@@ -546,4 +550,20 @@ func runCmd(dir string, name string, args ...string) (string, error) {
 var errorf = func(f string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, "godeps: %s\n", fmt.Sprintf(f, a...))
 	exitCode = 1
+}
+
+func printShellCommand(dir, name string, args []string) {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "[%s] ", dir)
+	buf.WriteString(name)
+	for _, arg := range args {
+		buf.WriteString(" ")
+		buf.WriteString(shquote(arg))
+	}
+	fmt.Fprintf(os.Stderr, "%s\n", buf.Bytes())
+}
+
+func shquote(s string) string {
+	// single-quote becomes single-quote, double-quote, single-quote, double-quote, single-quote
+	return `'` + strings.Replace(s, `'`, `'"'"'`, -1) + `'`
 }
