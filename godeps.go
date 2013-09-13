@@ -455,7 +455,7 @@ func (bzrVCS) Kind() string {
 }
 
 var validBzrInfo = regexp.MustCompile(`^([0-9]+) ([^ \t]+)$`)
-var shelveLine = regexp.MustCompile(`^[0-9]+ shelves exist\.`)
+var shelveLine = regexp.MustCompile(`^[0-9]+ (shelves exist|shelf exists)\.`)
 
 func (bzrVCS) Info(dir string) (VCSInfo, error) {
 	out, err := runCmd(dir, "bzr", "revision-info", "--tree")
