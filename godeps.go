@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"go/build"
@@ -438,16 +439,58 @@ type VCSInfo struct {
 var metadataDirs = map[string]VCS{
 	".bzr": bzrVCS{},
 	".hg":  hgVCS{},
+	".git": gitVCS{},
 }
 
 var kindToVCS = map[string]VCS{
 	"bzr": bzrVCS{},
 	"hg":  hgVCS{},
+	"git": gitVCS{},
 }
 
-// TODO git
-// git rev-parse HEAD
-// git checkout $revid
+type gitVCS struct{}
+
+func (gitVCS) Kind() string {
+	return "git"
+}
+
+var gitCleanLine = regexp.MustCompile(`working directory clean$`)
+
+func (gitVCS) Info(dir string) (VCSInfo, error) {
+	out, err := runCmd(dir, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return VCSInfo{}, err
+	}
+	revid := strings.TrimSpace(out)
+	// validate the revision hash
+	revhash, err := hex.DecodeString(revid)
+	if err != nil || len(revhash) == 0 {
+		return VCSInfo{},
+			fmt.Errorf("git rev-parse provided invalid revision: %v", revid)
+	}
+
+	out, err = runCmd(dir, "git", "status")
+	if err != nil {
+		return VCSInfo{}, err
+	}
+	clean := false
+	statusLines := strings.Split(out, "\n")
+	for _, line := range statusLines {
+		if gitCleanLine.MatchString(line) {
+			clean = true
+			break
+		}
+	}
+	return VCSInfo{
+		revid: revid,
+		clean: clean,
+	}, nil
+}
+
+func (gitVCS) Update(dir string, revid string) error {
+	_, err := runCmd(dir, "git", "checkout", revid)
+	return err
+}
 
 type bzrVCS struct{}
 
