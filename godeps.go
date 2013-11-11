@@ -454,8 +454,6 @@ func (gitVCS) Kind() string {
 	return "git"
 }
 
-var gitCleanLine = regexp.MustCompile(`working directory clean$`)
-
 func (gitVCS) Info(dir string) (VCSInfo, error) {
 	out, err := runCmd(dir, "git", "rev-parse", "HEAD")
 	if err != nil {
@@ -466,24 +464,16 @@ func (gitVCS) Info(dir string) (VCSInfo, error) {
 	revhash, err := hex.DecodeString(revid)
 	if err != nil || len(revhash) == 0 {
 		return VCSInfo{},
-			fmt.Errorf("git rev-parse provided invalid revision: %v", revid)
+			fmt.Errorf("git rev-parse provided invalid revision: %q", revid)
 	}
 
-	out, err = runCmd(dir, "git", "status")
+	out, err = runCmd(dir, "git", "status", "--porcelain")
 	if err != nil {
 		return VCSInfo{}, err
 	}
-	clean := false
-	statusLines := strings.Split(out, "\n")
-	for _, line := range statusLines {
-		if gitCleanLine.MatchString(line) {
-			clean = true
-			break
-		}
-	}
 	return VCSInfo{
 		revid: revid,
-		clean: clean,
+		clean: out == "",
 	}, nil
 }
 
