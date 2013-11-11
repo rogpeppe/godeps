@@ -464,15 +464,17 @@ func (gitVCS) Info(dir string) (VCSInfo, error) {
 	revhash, err := hex.DecodeString(revid)
 	if err != nil || len(revhash) == 0 {
 		return VCSInfo{},
-			fmt.Errorf("git rev-parse provided invalid revision: %q", revid)
+			fmt.Errorf("git rev-parse provided invalid revision %q", revid)
 	}
 
+	// `git status --porcelain` outputs one line per changed or untracked file.
 	out, err = runCmd(dir, "git", "status", "--porcelain")
 	if err != nil {
 		return VCSInfo{}, err
 	}
 	return VCSInfo{
 		revid: revid,
+		// Empty output (with rc=0) indicates no changes in working copy.
 		clean: out == "",
 	}, nil
 }
