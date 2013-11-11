@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"go/build"
