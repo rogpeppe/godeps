@@ -15,11 +15,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
-var revFile = flag.String("u", "", "file containing desired revisions")
+var revFile = flag.String("u", "", "update dependencies")
 var testDeps = flag.Bool("t", false, "include testing dependencies in output")
 var printCommands = flag.Bool("x", false, "show executed commands")
+var dryRun = flag.Bool("n", false, "print but do not execute update commands")
 
 var exitCode = 0
 
@@ -27,8 +29,8 @@ var buildContext = build.Default
 
 var usage = `
 Usage:
-	godeps [-t] [pkg ...]
-	godeps -u file
+	godeps [-x] [-t] [pkg ...]
+	godeps -u file [-x] [-n]
 
 In the first form of usage, godeps prints to standard output a list of
 all the source dependencies of the named packages (or the package in
@@ -40,7 +42,8 @@ lines from the output to make the output suitable for input to godeps -u.
 In the second form, godeps updates source to versions specified by the
 -u file argument, which should hold version information in the same
 form printed by godeps. It is an error if the file contains more than
-one line for the same package root.
+one line for the same package root. If the -n flag is specified,
+update commands will be printed but not executed.
 `[1:]
 
 func main() {
@@ -480,7 +483,7 @@ func (gitVCS) Info(dir string) (VCSInfo, error) {
 }
 
 func (gitVCS) Update(dir string, revid string) error {
-	_, err := runCmd(dir, "git", "checkout", revid)
+	_, err := runUpdateCmd(dir, "git", "checkout", revid)
 	return err
 }
 
@@ -524,7 +527,7 @@ func (bzrVCS) Info(dir string) (VCSInfo, error) {
 }
 
 func (bzrVCS) Update(dir string, revid string) error {
-	_, err := runCmd(dir, "bzr", "update", "-r", "revid:"+revid)
+	_, err := runUpdateCmd(dir, "bzr", "update", "-r", "revid:"+revid)
 	return err
 }
 
@@ -558,8 +561,16 @@ func (hgVCS) Kind() string {
 }
 
 func (hgVCS) Update(dir string, revid string) error {
-	_, err := runCmd(dir, "hg", "update", revid)
+	_, err := runUpdateCmd(dir, "hg", "update", revid)
 	return err
+}
+
+func runUpdateCmd(dir string, name string, args ...string) (string, error) {
+	if *dryRun {
+		printShellCommand(dir, name, args)
+		return "", nil
+	}
+	return runCmd(dir, name, args...)
 }
 
 func runCmd(dir string, name string, args ...string) (string, error) {
@@ -587,9 +598,19 @@ var errorf = func(f string, a ...interface{}) {
 	exitCode = 1
 }
 
+var (
+	outputDirMutex sync.Mutex
+	outputDir      string
+)
+
 func printShellCommand(dir, name string, args []string) {
+	outputDirMutex.Lock()
+	defer outputDirMutex.Unlock()
+	if dir != outputDir {
+		fmt.Fprintf(os.Stderr, "cd %s\n", shquote(dir))
+		outputDir = dir
+	}
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "[%s] ", dir)
 	buf.WriteString(name)
 	for _, arg := range args {
 		buf.WriteString(" ")
