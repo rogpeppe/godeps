@@ -186,14 +186,11 @@ func (s *suite) TestList(c *gc.C) {
 		s.errors = nil
 		deps := list(test.args, test.testDeps)
 
-		c.Assert(s.errors, gc.HasLen, len(test.errors))
 		for i, e := range s.errors {
 			s.errors[i] = strings.Replace(e, dir, "$tmp", -1)
 		}
 		sort.Strings(test.errors)
-		for i, e := range s.errors {
-			c.Check(e, gc.Equals, test.errors[i], gc.Commentf("error %d", i))
-		}
+		c.Assert(s.errors, gc.DeepEquals, test.errors)
 
 		// Check that rev ids are non-empty, but don't check specific values.
 		result := ""

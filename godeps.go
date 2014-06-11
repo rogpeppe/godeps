@@ -370,7 +370,6 @@ func parents(path string) []string {
 
 type walkContext struct {
 	checked      map[string]bool
-	includeTests bool
 	visit        func(*build.Package, error) bool
 }
 
@@ -385,15 +384,14 @@ type walkContext struct {
 func walkDeps(paths []string, includeTests bool, visit func(*build.Package, error) bool) {
 	ctxt := &walkContext{
 		checked:      make(map[string]bool),
-		includeTests: includeTests,
 		visit:        visit,
 	}
 	for _, path := range paths {
-		ctxt.walkDeps(path)
+		ctxt.walkDeps(path, includeTests)
 	}
 }
 
-func (ctxt *walkContext) walkDeps(pkgPath string) {
+func (ctxt *walkContext) walkDeps(pkgPath string, includeTests bool) {
 	if pkgPath == "C" {
 		return
 	}
@@ -417,12 +415,13 @@ func (ctxt *walkContext) walkDeps(pkgPath string) {
 	// N.B. is it worth eliminating duplicates here?
 	var allImports []string
 	allImports = append(allImports, pkg.Imports...)
-	if ctxt.includeTests {
+	if includeTests {
 		allImports = append(allImports, pkg.TestImports...)
 		allImports = append(allImports, pkg.XTestImports...)
 	}
 	for _, impPath := range allImports {
-		ctxt.walkDeps(impPath)
+		// testing dependencies are not transitively included.
+		ctxt.walkDeps(impPath, false)
 	}
 }
 
