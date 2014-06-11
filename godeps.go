@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/kisielk/gotool"
 )
 
 var revFile = flag.String("u", "", "update dependencies")
@@ -62,6 +64,7 @@ func main() {
 		if len(pkgs) == 0 {
 			pkgs = []string{"."}
 		}
+		pkgs = gotool.ImportPaths(pkgs)
 		for _, info := range list(pkgs, *testDeps) {
 			fmt.Println(info)
 		}
@@ -78,26 +81,22 @@ func update(file string) {
 	// First get info on all the projects, make sure their working
 	// directories are all clean and prune out the ones which
 	// don't need updating.
-	failed := false
 	for proj, info := range projects {
 		currentInfo, err := info.vcs.Info(info.dir)
 		if err != nil {
 			errorf("cannot get information on %q: %v", info.dir, err)
-			failed = true
+			delete(projects, proj)
 			continue
 		}
 		if !currentInfo.clean {
-			errorf("%q is not clean", info.dir)
-			failed = true
+			errorf("%q is not clean; will not update", info.dir)
+			delete(projects, proj)
 			continue
 		}
 		if currentInfo.revid == info.revid {
 			// No need to update.
 			delete(projects, proj)
 		}
-	}
-	if failed {
-		return
 	}
 	for _, info := range projects {
 		err := info.vcs.Update(info.dir, info.revid)

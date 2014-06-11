@@ -4,17 +4,17 @@ import (
 	"bufio"
 	"fmt"
 	"go/build"
-	. "launchpad.net/gocheck"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+	gc "launchpad.net/gocheck"
 )
 
 func TestPackage(t *testing.T) {
-	TestingT(t)
+	gc.TestingT(t)
 }
 
 type suite struct {
@@ -23,9 +23,9 @@ type suite struct {
 	errors            []string
 }
 
-var _ = Suite(&suite{})
+var _ = gc.Suite(&suite{})
 
-func (s *suite) SetUpTest(c *C) {
+func (s *suite) SetUpTest(c *gc.C) {
 	s.savedBuildContext = buildContext
 	s.savedErrorf = errorf
 	errorf = func(f string, a ...interface{}) {
@@ -33,7 +33,7 @@ func (s *suite) SetUpTest(c *C) {
 	}
 }
 
-func (s *suite) TearDownTest(c *C) {
+func (s *suite) TearDownTest(c *gc.C) {
 	buildContext = s.savedBuildContext
 	errorf = s.savedErrorf
 	s.errors = nil
@@ -105,7 +105,7 @@ hgunclean hg 0
 	},
 }}
 
-func (s *suite) TestList(c *C) {
+func (s *suite) TestList(c *gc.C) {
 	dir := c.MkDir()
 	gopath := []string{filepath.Join(dir, "p1"), filepath.Join(dir, "p2")}
 	writePackages(c, gopath[0], "v1", map[string]packageSpec{
@@ -175,7 +175,7 @@ func (s *suite) TestList(c *C) {
 	// unclean repos
 	for _, pkg := range []string{"hgunclean", "bzrunclean"} {
 		f, err := os.Create(filepath.Join(pkgDir(gopath[0], pkg), "extra"))
-		c.Assert(err, IsNil)
+		c.Assert(err, gc.IsNil)
 		f.Close()
 	}
 
@@ -186,23 +186,23 @@ func (s *suite) TestList(c *C) {
 		s.errors = nil
 		deps := list(test.args, test.testDeps)
 
-		c.Assert(s.errors, HasLen, len(test.errors))
+		c.Assert(s.errors, gc.HasLen, len(test.errors))
 		for i, e := range s.errors {
 			s.errors[i] = strings.Replace(e, dir, "$tmp", -1)
 		}
 		sort.Strings(test.errors)
 		for i, e := range s.errors {
-			c.Check(e, Equals, test.errors[i], Commentf("error %d", i))
+			c.Check(e, gc.Equals, test.errors[i], gc.Commentf("error %d", i))
 		}
 
 		// Check that rev ids are non-empty, but don't check specific values.
 		result := ""
 		for i, info := range deps {
-			c.Check(info.revid, Not(Equals), "", Commentf("info %d: %v", i, info))
+			c.Check(info.revid, gc.Not(gc.Equals), "", gc.Commentf("info %d: %v", i, info))
 			info.revid = ""
 			result += fmt.Sprintf("%s %s %s\n", info.project, info.vcs.Kind(), info.revno)
 		}
-		c.Check(result, Equals, test.result)
+		c.Check(result, gc.Equals, test.result)
 	}
 }
 
@@ -210,26 +210,26 @@ func pkgDir(rootDir string, pkg string) string {
 	return filepath.Join(rootDir, "src", filepath.FromSlash(pkg))
 }
 
-func initRepo(c *C, kind, rootDir, pkg string) {
+func initRepo(c *gc.C, kind, rootDir, pkg string) {
 	// This relies on the fact that hg, bzr and git
 	// all use the same command to initialize a directory.
 	dir := pkgDir(rootDir, pkg)
 	_, err := runCmd(dir, kind, "init")
-	if !c.Check(err, IsNil) {
+	if !c.Check(err, gc.IsNil) {
 		return
 	}
 	_, err = runCmd(dir, kind, "add", dir)
-	if !c.Check(err, IsNil) {
+	if !c.Check(err, gc.IsNil) {
 		return
 	}
 	commitRepo(c, dir, kind, "initial commit")
 }
 
-func commitRepo(c *C, dir, kind string, message string) {
+func commitRepo(c *gc.C, dir, kind string, message string) {
 	// This relies on the fact that hg, bzr and git
 	// all use the same command to initialize a directory.
 	_, err := runCmd(dir, kind, "commit", "-m", message)
-	c.Check(err, IsNil)
+	c.Check(err, gc.IsNil)
 }
 
 type packageSpec struct {
@@ -238,14 +238,14 @@ type packageSpec struct {
 	xTestDeps []string
 }
 
-func writePackages(c *C, rootDir string, version string, pkgs map[string]packageSpec) {
+func writePackages(c *gc.C, rootDir string, version string, pkgs map[string]packageSpec) {
 	for name, pkg := range pkgs {
 		dir := pkgDir(rootDir, name)
 		err := os.MkdirAll(dir, 0777)
-		c.Assert(err, IsNil)
+		c.Assert(err, gc.IsNil)
 		writeFile := func(fileName, pkgIdent string, deps []string) {
 			err := writePackageFile(filepath.Join(dir, fileName), pkgIdent, version, deps)
-			c.Assert(err, IsNil)
+			c.Assert(err, gc.IsNil)
 		}
 		writeFile("x.go", "x", pkg.deps)
 		writeFile("internal_test.go", "x", pkg.testDeps)
