@@ -24,6 +24,7 @@ var revFile = flag.String("u", "", "update dependencies")
 var testDeps = flag.Bool("t", false, "include testing dependencies in output")
 var printCommands = flag.Bool("x", false, "show executed commands")
 var dryRun = flag.Bool("n", false, "print but do not execute update commands")
+var fetch = flag.Bool("f", false, "when updating, try to fetch deps if the update fails")
 
 var exitCode = 0
 
@@ -32,7 +33,7 @@ var buildContext = build.Default
 var usage = `
 Usage:
 	godeps [-x] [-t] [pkg ...]
-	godeps -u file [-x] [-n]
+	godeps -u file [-x] [-n] [-f]
 
 In the first form of usage, godeps prints to standard output a list of
 all the source dependencies of the named packages (or the package in
@@ -46,6 +47,8 @@ In the second form, godeps updates source to versions specified by the
 form printed by godeps. It is an error if the file contains more than
 one line for the same package root. If the -n flag is specified,
 update commands will be printed but not executed.
+If a specified revision is not currently available and the -f flag is
+specified, godeps will attempt to fetch it.
 `[1:]
 
 func main() {
@@ -98,14 +101,31 @@ func update(file string) {
 			delete(projects, proj)
 		}
 	}
+	n := 0
 	for _, info := range projects {
-		err := info.vcs.Update(info.dir, info.revid)
-		if err != nil {
+		if err := updateProject(info); err != nil {
 			errorf("cannot update %q: %v", info.dir, err)
-			return
+			continue
 		}
+		n++
 		fmt.Printf("%q now at %s\n", info.dir, info.revid)
 	}
+		
+	if n < len(projects) {
+		fmt.Printf("%d repositories updated; %d failed\n", n, len(projects)-n)
+	}
+}
+
+func updateProject(info *depInfo) error {
+	err := info.vcs.Update(info.dir, info.revid)
+	if err == nil || !*fetch {
+		return nil
+	}
+	fmt.Printf("update %s failed; trying to fetch newer version\n", info.dir)
+	if err := info.vcs.Fetch(info.dir); err != nil {
+		return err
+	}
+	return info.vcs.Update(info.dir, info.revid)
 }
 
 func parseDepFile(file string) (map[string]*depInfo, error) {
@@ -429,6 +449,7 @@ type VCS interface {
 	Kind() string
 	Info(dir string) (VCSInfo, error)
 	Update(dir, revid string) error
+	Fetch(dir string) error
 }
 
 type VCSInfo struct {
@@ -485,6 +506,11 @@ func (gitVCS) Update(dir string, revid string) error {
 	return err
 }
 
+func (gitVCS) Fetch(dir string) error {
+	_, err := runCmd(dir, "git", "pull", "--ff-only")
+	return err
+}
+
 type bzrVCS struct{}
 
 func (bzrVCS) Kind() string {
@@ -529,6 +555,11 @@ func (bzrVCS) Update(dir string, revid string) error {
 	return err
 }
 
+func (bzrVCS) Fetch(dir string) error {
+	_, err := runCmd(dir, "bzr", "pull")
+	return err
+}
+
 var validHgInfo = regexp.MustCompile(`^([a-f0-9]+) ([0-9]+)$`)
 
 type hgVCS struct{}
@@ -560,6 +591,11 @@ func (hgVCS) Kind() string {
 
 func (hgVCS) Update(dir string, revid string) error {
 	_, err := runUpdateCmd(dir, "hg", "update", revid)
+	return err
+}
+
+func (hgVCS) Fetch(dir string) error {
+	_, err := runCmd(dir, "hg", "pull")
 	return err
 }
 
