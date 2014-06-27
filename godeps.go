@@ -117,7 +117,7 @@ func update(file string) {
 }
 
 func updateProjects(projects map[string]*depInfo) {
-	limit := make(chan struct{}, 10)
+	limit := make(chan struct{}, *parallel)
 	type result struct {
 		info *depInfo
 		err  error
