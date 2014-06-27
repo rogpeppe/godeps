@@ -676,7 +676,6 @@ func runCmd(dir string, name string, args ...string) (string, error) {
 	if _, ok := err.(*exec.ExitError); ok && errData.Len() > 0 {
 		return "", errors.New(strings.TrimSpace(errData.String()))
 	}
-
 	return "", fmt.Errorf("cannot run %q: %v", append([]string{name}, args...), err)
 }
 
