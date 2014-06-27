@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"go/build"
+	gc "launchpad.net/gocheck"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
-	gc "launchpad.net/gocheck"
 )
 
 func TestPackage(t *testing.T) {
