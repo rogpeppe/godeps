@@ -20,10 +20,15 @@ import (
 	"github.com/kisielk/gotool"
 )
 
-var revFile = flag.String("u", "", "update dependencies")
-var testDeps = flag.Bool("t", false, "include testing dependencies in output")
-var printCommands = flag.Bool("x", false, "show executed commands")
-var dryRun = flag.Bool("n", false, "print but do not execute update commands")
+var (
+	revFile       = flag.String("u", "", "update dependencies")
+	testDeps      = flag.Bool("t", false, "include testing dependencies")
+	printCommands = flag.Bool("x", false, "show executed commands")
+	dryRun        = flag.Bool("n", false, "print but do not execute update commands")
+	_             = flag.Bool("f", true, "(deprecated, superceded by -F) when updating, try to fetch deps if the update fails")
+	noFetch       = flag.Bool("F", false, "when updating, do not try to fetch deps if the update fails")
+	parallel      = flag.Int("P", 10, "max number of concurrent updates")
+)
 
 var exitCode = 0
 
@@ -31,26 +36,29 @@ var buildContext = build.Default
 
 var usage = `
 Usage:
-	godeps [-x] [-t] [pkg ...]
-	godeps -u file [-x] [-n]
+	godeps [flags] [pkg ...]
+	godeps -u file [flags]
 
-In the first form of usage, godeps prints to standard output a list of
-all the source dependencies of the named packages (or the package in
-the current directory if none is given).  If there is ambiguity in the
-source-control systems used, godeps will print all the available versions
-and an error, exiting with a false status. It is up to the user to remove
-lines from the output to make the output suitable for input to godeps -u.
+In the first form of usage (without the -u flag), godeps prints to
+standard output a list of all the source dependencies of the named
+packages (or the package in the current directory if none is given).
+If there is ambiguity in the source-control systems used, godeps will
+print all the available versions and an error, exiting with a false
+status. It is up to the user to remove lines from the output to make
+the output suitable for input to godeps -u.
 
-In the second form, godeps updates source to versions specified by the
--u file argument, which should hold version information in the same
-form printed by godeps. It is an error if the file contains more than
-one line for the same package root. If the -n flag is specified,
-update commands will be printed but not executed.
+In the second form, godeps updates source to versions specified by
+the -u file argument, which should hold version information in the
+same form printed by godeps. It is an error if the file contains more
+than one line for the same package root. If a specified revision is not
+currently available, godeps will attempt to fetch it, unless the -F flag
+is provided.
 `[1:]
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "%s", usage)
+		fmt.Fprintf(os.Stderr, "%s\n", usage)
+		flag.PrintDefaults()
 		os.Exit(2)
 	}
 	flag.Parse()
@@ -82,6 +90,13 @@ func update(file string) {
 	// directories are all clean and prune out the ones which
 	// don't need updating.
 	for proj, info := range projects {
+		if info.notThere {
+			if *noFetch {
+				errorf("%q does not exist", proj)
+				delete(projects, proj)
+			}
+			continue
+		}
 		currentInfo, err := info.vcs.Info(info.dir)
 		if err != nil {
 			errorf("cannot get information on %q: %v", info.dir, err)
@@ -98,14 +113,64 @@ func update(file string) {
 			delete(projects, proj)
 		}
 	}
-	for _, info := range projects {
-		err := info.vcs.Update(info.dir, info.revid)
-		if err != nil {
-			errorf("cannot update %q: %v", info.dir, err)
-			return
-		}
-		fmt.Printf("%q now at %s\n", info.dir, info.revid)
+	updateProjects(projects)
+}
+
+func updateProjects(projects map[string]*depInfo) {
+	limit := make(chan struct{}, *parallel)
+	type result struct {
+		info *depInfo
+		err  error
 	}
+	results := make(chan result)
+	for _, info := range projects {
+		info := info
+		go func() {
+			limit <- struct{}{}
+			err := updateProject(info)
+			<-limit
+			results <- result{info, err}
+		}()
+	}
+	n := 0
+	for i := 0; i < len(projects); i++ {
+		r := <-results
+		if r.err != nil {
+			errorf("cannot update %q: %v", r.info.dir, r.err)
+			continue
+		}
+		n++
+		fmt.Printf("%q now at %s\n", r.info.dir, r.info.revid)
+	}
+	if n < len(projects) {
+		fmt.Printf("%d repositories updated; %d failed\n", n, len(projects)-n)
+	}
+}
+
+func updateProject(info *depInfo) error {
+	err := info.vcs.Update(info.dir, info.revid)
+	if err == nil || *noFetch {
+		return nil
+	}
+	fmt.Printf("update %s failed; trying to fetch newer version\n", info.dir)
+	if info.notThere {
+		_, err := runCmd(".", "go", "get", "-d", info.project)
+		// Note that we can't add a "/..." to the end of info.project, because
+		// that causes go get to fail for vanity import paths with an
+		// "unrecognized import path" error. But when we *don't*
+		// use /..., we get a "no buildable Go source files" error when
+		// the root of the repository does not contain any Go files.
+		// It's a no-win situation, so we just ignore the latter error.
+		// See https://code.google.com/p/go/issues/detail?id=8335
+		if err != nil && !strings.Contains(err.Error(), "no buildable Go source files") {
+			return err
+		}
+	} else {
+		if err := info.vcs.Fetch(info.dir); err != nil {
+			return err
+		}
+	}
+	return info.vcs.Update(info.dir, info.revid)
 }
 
 func parseDepFile(file string) (map[string]*depInfo, error) {
@@ -135,9 +200,21 @@ func parseDepFile(file string) (map[string]*depInfo, error) {
 			return nil, fmt.Errorf("project %q has more than one entry", info.project)
 		}
 		deps[info.project] = info
-		info.dir, err = projectToDir(info.project)
+		gopath := filepath.SplitList(buildContext.GOPATH)
+		if len(gopath) == 0 {
+			return nil, fmt.Errorf("GOPATH not set")
+		}
+		info.dir, err = projectToDir(info.project, gopath)
 		if err != nil {
-			return nil, fmt.Errorf("cannot find directory for %q: %v", info.project, err)
+			if err != errProjectNotFound {
+				return nil, fmt.Errorf("cannot find directory for %q: %v", info.project, err)
+			}
+			// The project does not currently exist but
+			// we may try to fetch it later. When we do, go
+			// get will fetch it to the first element of
+			// $GOPATH, so set the directory to that.
+			info.dir = filepath.Join(gopath[0], "src", filepath.FromSlash(info.project))
+			info.notThere = true
 		}
 	}
 	return deps, nil
@@ -226,16 +303,18 @@ func dirToProject(dir string) (string, error) {
 	return "", fmt.Errorf("project directory not found in GOPATH or GOROOT")
 }
 
-func projectToDir(proj string) (string, error) {
-	for _, p := range filepath.SplitList(buildContext.GOPATH) {
+func projectToDir(proj string, gopath []string) (string, error) {
+	for _, p := range gopath {
 		dir := filepath.Join(p, "src", filepath.FromSlash(proj))
 		info, err := os.Stat(dir)
 		if err == nil && info.IsDir() {
 			return dir, nil
 		}
 	}
-	return "", fmt.Errorf("not found in GOPATH")
+	return "", errProjectNotFound
 }
+
+var errProjectNotFound = errors.New("not found in GOPATH")
 
 // relativeToParent returns whether the child
 // path is under (or the same as) the parent path,
@@ -271,9 +350,10 @@ func (s depInfoSlice) Less(i, j int) bool {
 }
 
 type depInfo struct {
-	project string
-	dir     string
-	vcs     VCS
+	project  string
+	notThere bool
+	dir      string
+	vcs      VCS
 	VCSInfo
 }
 
@@ -369,8 +449,8 @@ func parents(path string) []string {
 }
 
 type walkContext struct {
-	checked      map[string]bool
-	visit        func(*build.Package, error) bool
+	checked map[string]bool
+	visit   func(*build.Package, error) bool
 }
 
 // walkDeps traverses the import dependency tree of the
@@ -383,8 +463,8 @@ type walkContext struct {
 // Each package will be visited at most once.
 func walkDeps(paths []string, includeTests bool, visit func(*build.Package, error) bool) {
 	ctxt := &walkContext{
-		checked:      make(map[string]bool),
-		visit:        visit,
+		checked: make(map[string]bool),
+		visit:   visit,
 	}
 	for _, path := range paths {
 		ctxt.walkDeps(path, includeTests)
@@ -429,6 +509,7 @@ type VCS interface {
 	Kind() string
 	Info(dir string) (VCSInfo, error)
 	Update(dir, revid string) error
+	Fetch(dir string) error
 }
 
 type VCSInfo struct {
@@ -485,6 +566,11 @@ func (gitVCS) Update(dir string, revid string) error {
 	return err
 }
 
+func (gitVCS) Fetch(dir string) error {
+	_, err := runCmd(dir, "git", "pull", "--ff-only")
+	return err
+}
+
 type bzrVCS struct{}
 
 func (bzrVCS) Kind() string {
@@ -529,6 +615,11 @@ func (bzrVCS) Update(dir string, revid string) error {
 	return err
 }
 
+func (bzrVCS) Fetch(dir string) error {
+	_, err := runCmd(dir, "bzr", "pull")
+	return err
+}
+
 var validHgInfo = regexp.MustCompile(`^([a-f0-9]+) ([0-9]+)$`)
 
 type hgVCS struct{}
@@ -563,6 +654,11 @@ func (hgVCS) Update(dir string, revid string) error {
 	return err
 }
 
+func (hgVCS) Fetch(dir string) error {
+	_, err := runCmd(dir, "hg", "pull")
+	return err
+}
+
 func runUpdateCmd(dir string, name string, args ...string) (string, error) {
 	if *dryRun {
 		printShellCommand(dir, name, args)
@@ -587,7 +683,6 @@ func runCmd(dir string, name string, args ...string) (string, error) {
 	if _, ok := err.(*exec.ExitError); ok && errData.Len() > 0 {
 		return "", errors.New(strings.TrimSpace(errData.String()))
 	}
-
 	return "", fmt.Errorf("cannot run %q: %v", append([]string{name}, args...), err)
 }
 

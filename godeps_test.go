@@ -4,13 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"go/build"
+	gc "launchpad.net/gocheck"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
-	gc "launchpad.net/gocheck"
 )
 
 func TestPackage(t *testing.T) {
@@ -190,6 +190,7 @@ func (s *suite) TestList(c *gc.C) {
 			s.errors[i] = strings.Replace(e, dir, "$tmp", -1)
 		}
 		sort.Strings(test.errors)
+		sort.Strings(s.errors)
 		c.Assert(s.errors, gc.DeepEquals, test.errors)
 
 		// Check that rev ids are non-empty, but don't check specific values.
@@ -215,7 +216,11 @@ func initRepo(c *gc.C, kind, rootDir, pkg string) {
 	if !c.Check(err, gc.IsNil) {
 		return
 	}
-	_, err = runCmd(dir, kind, "add", dir)
+
+	args := []string{"add"}
+	files, _ := filepath.Glob(dir + "/[^.]*")
+	args = append(args, files...)
+	_, err = runCmd(dir, kind, args...)
 	if !c.Check(err, gc.IsNil) {
 		return
 	}
