@@ -154,8 +154,15 @@ func updateProject(info *depInfo) error {
 	}
 	fmt.Printf("update %s failed; trying to fetch newer version\n", info.dir)
 	if info.notThere {
-		_, err := runCmd(".", "go", "get", "-d", info.project+"/...")
-		if err != nil {
+		_, err := runCmd(".", "go", "get", "-d", info.project)
+		// Note that we can't add a "/..." to the end of info.project, because
+		// that causes go get to fail for vanity import paths with an
+		// "unrecognized import path" error. But when we *don't*
+		// use /..., we get a "no buildable Go source files" error when
+		// the root of the repository does not contain any Go files.
+		// It's a no-win situation, so we just ignore the latter error.
+		// See https://code.google.com/p/go/issues/detail?id=8335
+		if err != nil && !strings.Contains(err.Error(), "no buildable Go source files") {
 			return err
 		}
 	} else {
