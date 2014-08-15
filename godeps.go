@@ -567,7 +567,7 @@ func (gitVCS) Update(dir string, revid string) error {
 }
 
 func (gitVCS) Fetch(dir string) error {
-	_, err := runCmd(dir, "git", "pull", "--ff-only")
+	_, err := runCmd(dir, "git", "fetch")
 	return err
 }
 
