@@ -225,9 +225,13 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	// We want to ignore the go core source and the projects
 	// for the root packages. Do this by getting leaf dependency info
 	// for all those things and adding them to an ignore list.
-	ignoreDirs := map[string]bool{
-		filepath.Clean(buildContext.GOROOT): true,
-	}
+	ignoreDirs := make(map[string]bool)
+
+	// Add a dummy dependency info entry for GOROOT.
+	// This prevents findVCSInfo from failing and ensures
+	// that GOROOT projects will be ignored, even though
+	// there may not be a VCS under $GOROOT.
+	infoByDir[filepath.Clean(buildContext.GOROOT)] = []*depInfo{}
 	for _, pkgPath := range pkgs {
 		pkg, err := buildContext.Import(pkgPath, ".", build.FindOnly)
 		if err != nil {
@@ -262,8 +266,11 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	// elements.
 	infoByProject := make(map[string][]*depInfo)
 	for dir, infos := range infoByDir {
+		if ignoreDirs[dir] {
+			continue
+		}
 		proj, err := dirToProject(dir)
-		if err != nil && !ignoreDirs[dir] {
+		if err != nil {
 			errorf("cannot get relative repo root for %q: %v", dir, err)
 			continue
 		}
