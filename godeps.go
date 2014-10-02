@@ -140,7 +140,7 @@ func updateProjects(projects map[string]*depInfo) {
 			continue
 		}
 		n++
-		fmt.Printf("%q now at %s\n", r.info.dir, r.info.revid)
+		fmt.Printf("%s now at %s\n", r.info.project, r.info.revid)
 	}
 	if n < len(projects) {
 		fmt.Printf("%d repositories updated; %d failed\n", n, len(projects)-n)
@@ -152,7 +152,7 @@ func updateProject(info *depInfo) error {
 	if err == nil || *noFetch {
 		return nil
 	}
-	fmt.Printf("update %s failed; trying to fetch newer version\n", info.dir)
+	fmt.Printf("update %s failed; trying to fetch newer version\n", info.project)
 	if info.notThere {
 		_, err := runCmd(".", "go", "get", "-d", info.project)
 		// Note that we can't add a "/..." to the end of info.project, because
