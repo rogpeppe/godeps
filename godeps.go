@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -180,18 +179,9 @@ func parseDepFile(file string) (map[string]*depInfo, error) {
 	}
 	defer f.Close()
 	deps := make(map[string]*depInfo)
-	r := bufio.NewReader(f)
-	for {
-		line, err := r.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("read error: %v", err)
-		}
-		if line[len(line)-1] == '\n' {
-			line = line[0 : len(line)-1]
-		}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
 		info, err := parseDepInfo(line)
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse %q: %v", line, err)
@@ -216,6 +206,9 @@ func parseDepFile(file string) (map[string]*depInfo, error) {
 			info.dir = filepath.Join(gopath[0], "src", filepath.FromSlash(info.project))
 			info.notThere = true
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read error: %v", err)
 	}
 	return deps, nil
 }
