@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kisielk/gotool"
 )
@@ -541,16 +543,25 @@ func (gitVCS) Kind() string {
 }
 
 func (gitVCS) Info(dir string) (VCSInfo, error) {
-	out, err := runCmd(dir, "git", "rev-parse", "HEAD")
+	out, err := runCmd(dir, "git", "log", "-n", "1", "--pretty=format:%H %ct", "HEAD")
 	if err != nil {
 		return VCSInfo{}, err
 	}
-	revid := strings.TrimSpace(out)
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
+		return VCSInfo{}, fmt.Errorf("unexpected git log output %q", out)
+	}
+	revid := fields[0]
 	// validate the revision hash
 	revhash, err := hex.DecodeString(revid)
 	if err != nil || len(revhash) == 0 {
 		return VCSInfo{},
 			fmt.Errorf("git rev-parse provided invalid revision %q", revid)
+	}
+	unixTime, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return VCSInfo{},
+			fmt.Errorf("git rev-parse provided invalid time %q", fields[1])
 	}
 
 	// `git status --porcelain` outputs one line per changed or untracked file.
@@ -562,6 +573,7 @@ func (gitVCS) Info(dir string) (VCSInfo, error) {
 		revid: revid,
 		// Empty output (with rc=0) indicates no changes in working copy.
 		clean: out == "",
+		revno: time.Unix(unixTime, 0).Format(time.RFC3339),
 	}, nil
 }
 
