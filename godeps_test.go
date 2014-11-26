@@ -69,6 +69,17 @@ foo/foo2 hg 0
 khroomph bzr 1
 `[1:],
 }, {
+	about:    "test dependencies included from packages early in list",
+	args:     []string{"foo/foo99", "foo/foo1"},
+	testDeps: true,
+	result: `
+bar bzr 1
+baz bzr 1
+foo hg 0
+foo/foo2 hg 0
+khroomph bzr 1
+`[1:],
+}, {
 	about: "ambiguous dependency",
 	args:  []string{"ambiguous1"},
 	result: `
@@ -117,6 +128,9 @@ func (s *suite) TestList(c *gc.C) {
 		"foo/foo2": {
 			deps: []string{"bar/bar1"},
 		},
+		"foo/foo99": {
+			deps: []string{"foo/foo1"},
+		},
 		"baz/baz1":     {},
 		"khroomph/khr": {},
 		"ambiguous1": {
@@ -158,6 +172,7 @@ func (s *suite) TestList(c *gc.C) {
 	}
 	goInitRepo("bzr", gopath[0], "foo/foo1")
 	goInitRepo("hg", gopath[0], "foo/foo2")
+	goInitRepo("bzr", gopath[0], "foo/foo99")
 	goInitRepo("bzr", gopath[0], "baz")
 	goInitRepo("bzr", gopath[0], "khroomph")
 	goInitRepo("bzr", gopath[0], "ambiguous1")

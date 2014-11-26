@@ -475,8 +475,12 @@ func (ctxt *walkContext) walkDeps(pkgPath string, includeTests bool) {
 	if pkgPath == "C" {
 		return
 	}
-	if ctxt.checked[pkgPath] {
-		// The package has already been, is or being, checked
+	if !includeTests && ctxt.checked[pkgPath] {
+		// The package has already been, is or being, checked.
+		// Note that when tests are being included (it's a top level
+		// package), we don't return here, because we may have encountered
+		// the package before as a dependency of a previous package
+		// and so not have included tests for it.
 		return
 	}
 	// BUG(rog) This ignores files that are excluded by
