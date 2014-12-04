@@ -573,7 +573,7 @@ func (gitVCS) Info(dir string) (VCSInfo, error) {
 		revid: revid,
 		// Empty output (with rc=0) indicates no changes in working copy.
 		clean: out == "",
-		revno: time.Unix(unixTime, 0).Format(time.RFC3339),
+		revno: time.Unix(unixTime, 0).UTC().Format(time.RFC3339),
 	}, nil
 }
 
