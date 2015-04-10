@@ -23,7 +23,7 @@ type VCS string
 
 const (
 	Git VCS = "git"
-	Hg VCS = "hg"
+	Hg  VCS = "hg"
 	Svn VCS = "svn"
 	Bzr VCS = "bzr"
 )
@@ -62,8 +62,8 @@ var vcsHg = &vcsCmd{
 	name: "Mercurial",
 	cmd:  "hg",
 
-	scheme:     []string{"https", "http", "ssh"},
-	pingCmd:    "identify {scheme}://{repo}",
+	scheme:  []string{"https", "http", "ssh"},
+	pingCmd: "identify {scheme}://{repo}",
 }
 
 // vcsGit describes how to use Git.
@@ -71,8 +71,8 @@ var vcsGit = &vcsCmd{
 	name: "Git",
 	cmd:  "git",
 
-	scheme:     []string{"git", "https", "http", "git+ssh"},
-	pingCmd:    "ls-remote {scheme}://{repo}",
+	scheme:  []string{"git", "https", "http", "git+ssh"},
+	pingCmd: "ls-remote {scheme}://{repo}",
 }
 
 // vcsBzr describes how to use Bazaar.
@@ -80,8 +80,8 @@ var vcsBzr = &vcsCmd{
 	name: "Bazaar",
 	cmd:  "bzr",
 
-	scheme:      []string{"https", "http", "bzr", "bzr+ssh"},
-	pingCmd:     "info {scheme}://{repo}",
+	scheme:  []string{"https", "http", "bzr", "bzr+ssh"},
+	pingCmd: "info {scheme}://{repo}",
 }
 
 // vcsSvn describes how to use Subversion.
@@ -89,8 +89,8 @@ var vcsSvn = &vcsCmd{
 	name: "Subversion",
 	cmd:  "svn",
 
-	scheme:     []string{"https", "http", "svn", "svn+ssh"},
-	pingCmd:    "info {scheme}://{repo}",
+	scheme:  []string{"https", "http", "svn", "svn+ssh"},
+	pingCmd: "info {scheme}://{repo}",
 }
 
 func (v *vcsCmd) String() string {
