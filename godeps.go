@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/kisielk/gotool"
+
+	"launchpad.net/godeps/pkgrepo"
 )
 
 var (
@@ -155,16 +157,8 @@ func updateProject(info *depInfo) error {
 	}
 	fmt.Printf("update %s failed; trying to fetch newer version\n", info.project)
 	if info.notThere {
-		_, err := runCmd(".", "go", "get", "-d", info.project)
-		// Note that we can't add a "/..." to the end of info.project, because
-		// that causes go get to fail for vanity import paths with an
-		// "unrecognized import path" error. But when we *don't*
-		// use /..., we get a "no buildable Go source files" error when
-		// the root of the repository does not contain any Go files.
-		// It's a no-win situation, so we just ignore the latter error.
-		// See https://code.google.com/p/go/issues/detail?id=8335
-		if err != nil && !strings.Contains(err.Error(), "no buildable Go source files") {
-			return err
+		if err := createRepo(info); err != nil {
+			return fmt.Errorf("cannot create repo: %v", err)
 		}
 	} else {
 		if err := info.vcs.Fetch(info.dir); err != nil {
@@ -172,6 +166,43 @@ func updateProject(info *depInfo) error {
 		}
 	}
 	return info.vcs.Update(info.dir, info.revid)
+}
+
+func createRepo(info *depInfo) error {
+	// We would much prefer to just do:
+	//
+	//	_, err := runCmd(".", "go", "get", "-nodeps", "-d", project)
+	//
+	// here, but there's no way to prevent go get from downloading
+	// dependencies recursively, which means that we can get
+	// extraneous dependencies when the package tip has dependencies
+	// not mentioned by the target revision, which can in turn cause
+	// build scripts that are particular about such things to fail.
+	// See also https://go-review.googlesource.com/#/c/8725/
+	//
+	// Instead, we use code abstracted from the go tool to do the
+	// job.
+	root, err := pkgrepo.Root(info.project)
+	if err != nil {
+		return fmt.Errorf("cannot find project root: %v", err)
+	}
+	rootDir := filepath.Join(buildContext.GOPATH, "src", filepath.FromSlash(root.Root))
+	if string(root.VCS) != info.vcs.Kind() {
+		return fmt.Errorf("project has unexpected VCS kind %s; want %s", root.VCS, info.vcs.Kind())
+	}
+
+	// The rest of this function is also taken directly from
+	// the downloadPackage function in the go tool.
+
+	// Some version control tools require the parent of the target to exist.
+	parent, _ := filepath.Split(rootDir)
+	if err := os.MkdirAll(parent, 0777); err != nil {
+		return err
+	}
+	if err := info.vcs.Create(root.Repo, rootDir); err != nil {
+		return err
+	}
+	return nil
 }
 
 func parseDepFile(file string) (map[string]*depInfo, error) {
@@ -515,6 +546,7 @@ type VCS interface {
 	Kind() string
 	Info(dir string) (VCSInfo, error)
 	Update(dir, revid string) error
+	Create(repo, rootDir string) error
 	Fetch(dir string) error
 }
 
@@ -577,6 +609,11 @@ func (gitVCS) Info(dir string) (VCSInfo, error) {
 	}, nil
 }
 
+func (gitVCS) Create(repo, rootDir string) error {
+	_, err := runUpdateCmd("", "git", "clone", repo, rootDir)
+	return err
+}
+
 func (gitVCS) Update(dir string, revid string) error {
 	_, err := runUpdateCmd(dir, "git", "checkout", revid)
 	return err
@@ -626,6 +663,11 @@ func (bzrVCS) Info(dir string) (VCSInfo, error) {
 	}, nil
 }
 
+func (bzrVCS) Create(repo, rootDir string) error {
+	_, err := runUpdateCmd("", "bzr", "branch", repo, rootDir)
+	return err
+}
+
 func (bzrVCS) Update(dir string, revid string) error {
 	_, err := runUpdateCmd(dir, "bzr", "update", "-r", "revid:"+revid)
 	return err
@@ -663,6 +705,11 @@ func (hgVCS) Info(dir string) (VCSInfo, error) {
 
 func (hgVCS) Kind() string {
 	return "hg"
+}
+
+func (hgVCS) Create(repo, rootDir string) error {
+	_, err := runUpdateCmd("", "hg", "clone", "-U", repo, rootDir)
+	return err
 }
 
 func (hgVCS) Update(dir string, revid string) error {
