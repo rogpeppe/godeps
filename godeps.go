@@ -186,10 +186,15 @@ func createRepo(info *depInfo) error {
 	if err != nil {
 		return fmt.Errorf("cannot find project root: %v", err)
 	}
-	rootDir := filepath.Join(buildContext.GOPATH, "src", filepath.FromSlash(root.Root))
 	if string(root.VCS) != info.vcs.Kind() {
 		return fmt.Errorf("project has unexpected VCS kind %s; want %s", root.VCS, info.vcs.Kind())
 	}
+
+	gopath := filepath.SplitList(buildContext.GOPATH)
+	if len(gopath) == 0 {
+		return fmt.Errorf("GOPATH not set")
+	}
+	rootDir := filepath.Join(gopath[0], "src", filepath.FromSlash(root.Root))
 
 	// The rest of this function is also taken directly from
 	// the downloadPackage function in the go tool.
