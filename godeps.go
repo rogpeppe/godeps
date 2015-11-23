@@ -31,6 +31,7 @@ var (
 	_             = flag.Bool("f", true, "(deprecated, superceded by -F) when updating, try to fetch deps if the update fails")
 	noFetch       = flag.Bool("F", false, "when updating, do not try to fetch deps if the update fails")
 	parallel      = flag.Int("P", 1, "max number of concurrent updates")
+	ifNewer       = flag.Bool("N", false, "when updating, only update if the dependency is newer")
 )
 
 var exitCode = 0
@@ -111,7 +112,7 @@ func update(file string) {
 			delete(projects, proj)
 			continue
 		}
-		if currentInfo.revid == info.revid {
+		if currentInfo.revid == info.revid || *ifNewer && !info.newer(currentInfo) {
 			// No need to update.
 			delete(projects, proj)
 		}
@@ -559,6 +560,23 @@ type VCSInfo struct {
 	revid string
 	revno string // optional
 	clean bool
+}
+
+// newer reports whether i0 is newer than i1.
+// This will only work for VCSs that use a date stamp
+// (currently only git) or a single integer.
+func (i0 VCSInfo) newer(i1 VCSInfo) bool {
+	n0, err0 := strconv.Atoi(i0.revno)
+	n1, err1 := strconv.Atoi(i1.revno)
+	if err0 == nil && err1 == nil {
+		return n0 > n1
+	}
+	t0, err0 := time.Parse(time.RFC3339, i0.revno)
+	t1, err1 := time.Parse(time.RFC3339, i1.revno)
+	if err0 == nil && err1 == nil {
+		return t0.After(t1)
+	}
+	return false
 }
 
 var metadataDirs = map[string]VCS{
