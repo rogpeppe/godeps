@@ -367,7 +367,7 @@ func relativeToParent(parent, child string) (ok bool, rel string) {
 		return true, ""
 	}
 
-	if !strings.HasPrefix(child, parent+"/") {
+	if !strings.HasPrefix(child, parent+string(filepath.Separator)) {
 		return false, ""
 	}
 	return true, child[len(parent)+1:]
