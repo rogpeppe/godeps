@@ -20,7 +20,7 @@ import (
 
 	"github.com/kisielk/gotool"
 
-	"launchpad.net/godeps/pkgrepo"
+	"github.com/rogpeppe/godeps/pkgrepo"
 )
 
 var (
