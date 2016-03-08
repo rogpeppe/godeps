@@ -31,6 +31,7 @@ var (
 	_             = flag.Bool("f", true, "(deprecated, superceded by -F) when updating, try to fetch deps if the update fails")
 	noFetch       = flag.Bool("F", false, "when updating, do not try to fetch deps if the update fails")
 	parallel      = flag.Int("P", 1, "max number of concurrent updates")
+	forceClean    = flag.Bool("force-clean", false, "force cleaning of modified-but-not-committed repositories. Do not use this flag unless you really need to!")
 	ifNewer       = flag.Bool("N", false, "when updating, only update if the dependency is newer")
 )
 
@@ -108,9 +109,11 @@ func update(file string) {
 			continue
 		}
 		if !currentInfo.clean {
-			errorf("%q is not clean; will not update", info.dir)
-			delete(projects, proj)
-			continue
+			if !*forceClean {
+				errorf("%q is not clean; will not update", info.dir)
+				delete(projects, proj)
+				continue
+			}
 		}
 		if currentInfo.revid == info.revid || *ifNewer && !info.newer(currentInfo) {
 			// No need to update.
@@ -152,6 +155,11 @@ func updateProjects(projects map[string]*depInfo) {
 }
 
 func updateProject(info *depInfo) error {
+	if !info.notThere && !info.clean && *forceClean {
+		if err := info.vcs.Clean(info.dir); err != nil {
+			return fmt.Errorf("cannot clean: %v", err)
+		}
+	}
 	err := info.vcs.Update(info.dir, info.revid)
 	if err == nil || *noFetch {
 		return nil
@@ -552,6 +560,7 @@ type VCS interface {
 	Kind() string
 	Info(dir string) (VCSInfo, error)
 	Update(dir, revid string) error
+	Clean(dir string) error
 	Create(repo, rootDir string) error
 	Fetch(dir string) error
 }
@@ -642,6 +651,11 @@ func (gitVCS) Update(dir string, revid string) error {
 	return err
 }
 
+func (gitVCS) Clean(dir string) error {
+	_, err := runUpdateCmd(dir, "git", "reset", "--hard", "HEAD")
+	return err
+}
+
 func (gitVCS) Fetch(dir string) error {
 	_, err := runCmd(dir, "git", "fetch")
 	return err
@@ -691,6 +705,11 @@ func (bzrVCS) Create(repo, rootDir string) error {
 	return err
 }
 
+func (bzrVCS) Clean(dir string) error {
+	_, err := runUpdateCmd(dir, "bzr", "revert")
+	return err
+}
+
 func (bzrVCS) Update(dir string, revid string) error {
 	_, err := runUpdateCmd(dir, "bzr", "update", "-r", "revid:"+revid)
 	return err
@@ -732,6 +751,11 @@ func (hgVCS) Kind() string {
 
 func (hgVCS) Create(repo, rootDir string) error {
 	_, err := runUpdateCmd("", "hg", "clone", "-U", repo, rootDir)
+	return err
+}
+
+func (hgVCS) Clean(dir string) error {
+	_, err := runUpdateCmd(dir, "hg", "revert", "--all")
 	return err
 }
 
