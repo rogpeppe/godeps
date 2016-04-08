@@ -290,7 +290,7 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	}
 	walkDeps(pkgs, testDeps, func(pkg *build.Package, err error) bool {
 		if err != nil {
-			errorf("cannot import %q: %v", pkg.Name, err)
+			errorf("cannot import %q: %v", pkg.ImportPath, err)
 			return false
 		}
 		if !findVCSInfo(pkg.Dir, infoByDir) && !ignoreDirs[pkg.Dir] {
