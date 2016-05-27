@@ -35,9 +35,14 @@ var (
 	ifNewer       = flag.Bool("N", false, "when updating, only update if the dependency is newer")
 )
 
-var exitCode = 0
+var (
+	exitCode = 0
 
-var buildContext = build.Default
+	buildContext = build.Default
+
+	// current working directory.
+	cwd = "."
+)
 
 var usage = `
 Usage:
@@ -67,6 +72,11 @@ func main() {
 		os.Exit(2)
 	}
 	flag.Parse()
+	if dir, err := os.Getwd(); err == nil {
+		cwd = dir
+	} else {
+		errorf("cannot get current working directory: %v", err)
+	}
 	if *revFile != "" {
 		if flag.NArg() != 0 {
 			flag.Usage()
@@ -273,7 +283,7 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	// there may not be a VCS under $GOROOT.
 	infoByDir[filepath.Clean(buildContext.GOROOT)] = []*depInfo{}
 	for _, pkgPath := range pkgs {
-		pkg, err := buildContext.Import(pkgPath, ".", build.FindOnly)
+		pkg, err := buildContext.Import(pkgPath, cwd, build.FindOnly)
 		if err != nil {
 			errorf("cannot find %q: %v", pkgPath, err)
 			continue
@@ -514,11 +524,11 @@ func walkDeps(paths []string, includeTests bool, visit func(*build.Package, erro
 		visit:   visit,
 	}
 	for _, path := range paths {
-		ctxt.walkDeps(path, includeTests)
+		ctxt.walkDeps(path, cwd, includeTests)
 	}
 }
 
-func (ctxt *walkContext) walkDeps(pkgPath string, includeTests bool) {
+func (ctxt *walkContext) walkDeps(pkgPath string, fromDir string, includeTests bool) {
 	if pkgPath == "C" {
 		return
 	}
@@ -537,7 +547,7 @@ func (ctxt *walkContext) walkDeps(pkgPath string, includeTests bool) {
 	// helper commands in package main).
 	// The solution is to avoid using build.Import but it's convenient
 	// at the moment.
-	pkg, err := buildContext.Import(pkgPath, ".", 0)
+	pkg, err := buildContext.Import(pkgPath, fromDir, 0)
 	ctxt.checked[pkg.ImportPath] = true
 	descend := ctxt.visit(pkg, err)
 	if err != nil || !descend {
@@ -551,8 +561,7 @@ func (ctxt *walkContext) walkDeps(pkgPath string, includeTests bool) {
 		allImports = append(allImports, pkg.XTestImports...)
 	}
 	for _, impPath := range allImports {
-		// testing dependencies are not transitively included.
-		ctxt.walkDeps(impPath, false)
+		ctxt.walkDeps(impPath, pkg.Dir, false)
 	}
 }
 
