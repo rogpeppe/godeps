@@ -1,15 +1,10 @@
 Godeps - a simple dependency locking tool for Go
 
-The godeps command can calculate the current set of
-dependencies of a set of Go packages, and knows how
-to update dependencies to a previously calculated set,
-including fetching new versions when necessary.
+The godeps command can calculate the current set of dependencies of a set of Go packages, and knows how to update dependencies to a previously calculated set, including fetching new versions when necessary.
 
-It is careful to avoid overwriting dependencies that have
-uncommitted changes.
+It is careful to avoid overwriting dependencies that have uncommitted changes.
 
 Usage:
-
 	godeps [flags] [pkg ...]
 	godeps -u file [flags]
 
@@ -28,11 +23,14 @@ than one line for the same package root. If a specified revision is not
 currently available, godeps will attempt to fetch it, unless the -F flag
 is provided.
 
-	  -F=false: when updating, do not try to fetch deps if the update fails
-	  -N=false: when updating, only update if the dependency is newer
-	  -P=1: max number of concurrent updates
-	  -f=true: (deprecated, superceded by -F) when updating, try to fetch deps if the update fails
-	  -n=false: print but do not execute update commands
-	  -t=false: include testing dependencies
-	  -u="": update dependencies
-	  -x=false: show executed commands
+	-F	when updating, do not try to fetch deps if the update fails
+	-N	when updating, only update if the dependency is newer
+	-P int
+		max number of concurrent updates (default 1)
+	-force-clean
+		force cleaning of modified-but-not-committed repositories. Do not use this flag unless you really need to!
+	-n	print but do not execute update commands
+	-t	include testing dependencies
+	-u string
+		update dependencies
+	-x	show executed commands
