@@ -1,0 +1,14 @@
+name: godeps  # the name of the snap
+version: 0  # the version of the snap
+summary: Simple dependency locking tool for Go
+description: |
+    The godeps command can calculate the current set of dependencies of a set
+    of Go packages, and knows how to update dependencies to a previously calculated
+    set, including fetching new versions when necessary.
+confinement: strict
+
+parts:
+    godeps:
+        plugin: go
+        go-packages:
+            - github.com/rogpeppe/godeps
