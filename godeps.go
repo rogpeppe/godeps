@@ -666,7 +666,7 @@ func (gitVCS) Clean(dir string) error {
 }
 
 func (gitVCS) Fetch(dir string) error {
-	_, err := runCmd(dir, "git", "fetch")
+	_, err := runCmd(dir, "git", "fetch", "--all")
 	return err
 }
 
