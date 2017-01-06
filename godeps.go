@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go/build"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/kisielk/gotool"
 
+	"github.com/rogpeppe/godeps/build"
 	"github.com/rogpeppe/godeps/pkgrepo"
 )
 

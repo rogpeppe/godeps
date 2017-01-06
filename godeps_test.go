@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"go/build"
 	gc "launchpad.net/gocheck"
 	"os"
 	"path/filepath"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/rogpeppe/godeps/build"
 )
 
 func TestPackage(t *testing.T) {
