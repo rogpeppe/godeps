@@ -36,6 +36,17 @@ type Context struct {
 	UseAllFiles bool   // use files regardless of +build lines, file names
 	Compiler    string // compiler to assume when computing target paths
 
+	// MatchTag, if specified, is called to determine whether a given
+	// tag should be considered to match for the purposes of importing.
+	// If neg is false, it should report whether the tag matches,
+	// otherwise it should report whether the tag does not match.
+	// A MatchTag that always returns true is equivalent to
+	// specifying UseAllFiles=true.
+	//
+	// If MatchTag is nil, Context.DefaultMatchTag will be called to
+	// to decide if a tag matches.
+	MatchTag func(tag string, neg bool) bool
+
 	// The build and release tags specify build constraints
 	// that should be considered satisfied when processing +build lines.
 	// Clients creating a new context may customize BuildTags, which
@@ -43,6 +54,9 @@ type Context struct {
 	// which defaults to the list of Go releases the current release is compatible with.
 	// In addition to the BuildTags and ReleaseTags, build constraints
 	// consider the values of GOARCH and GOOS as satisfied tags.
+	//
+	// Both these fields are considered only by DefaultMatchTag and
+	// will be ignored if MatchTag is non-nil.
 	BuildTags   []string
 	ReleaseTags []string
 
@@ -1409,8 +1423,8 @@ func splitQuoted(s string) (r []string, err error) {
 //	!cgo (if cgo is disabled)
 //	ctxt.Compiler
 //	!ctxt.Compiler
-//	tag (if tag is listed in ctxt.BuildTags or ctxt.ReleaseTags)
-//	!tag (if tag is not listed in ctxt.BuildTags or ctxt.ReleaseTags)
+//	tag (if ctxt.MatchTag(name) returns true)
+//	!tag (if ctxt.MatchTag(name) returns false)
 //	a comma-separated list of any of these
 //
 func (ctxt *Context) match(name string, allTags map[string]bool) bool {
@@ -1429,8 +1443,13 @@ func (ctxt *Context) match(name string, allTags map[string]bool) bool {
 	if strings.HasPrefix(name, "!!") { // bad syntax, reject always
 		return false
 	}
-	if strings.HasPrefix(name, "!") { // negation
-		return len(name) > 1 && !ctxt.match(name[1:], allTags)
+	neg := false
+	if strings.HasPrefix(name, "!") {
+		if len(name) <= 1 {
+			return false
+		}
+		neg = true
+		name = name[1:]
 	}
 
 	if allTags != nil {
@@ -1445,6 +1464,25 @@ func (ctxt *Context) match(name string, allTags map[string]bool) bool {
 		}
 	}
 
+	return ctxt.matchTag(name, neg)
+}
+
+// matchTag implements ctxt.MatchTag by calling that
+// field if not nil, and otherwise using ctxt.DefaultMatchTag.
+func (ctxt *Context) matchTag(name string, neg bool) bool {
+	if ctxt.MatchTag != nil {
+		return ctxt.MatchTag(name, neg)
+	}
+	if neg {
+		return !ctxt.DefaultMatchTag(name)
+	}
+	return ctxt.DefaultMatchTag(name)
+}
+
+// DefaultMatchTag reports whether the given name matches the given
+// tag with respect to the context. It is used to provide the default implementation
+// of ctxt.MatchTag used if that field is nil.
+func (ctxt *Context) DefaultMatchTag(name string) bool {
 	// special tags
 	if ctxt.CgoEnabled && name == "cgo" {
 		return true
@@ -1455,7 +1493,6 @@ func (ctxt *Context) match(name string, allTags map[string]bool) bool {
 	if ctxt.GOOS == "android" && name == "linux" {
 		return true
 	}
-
 	// other tags
 	for _, tag := range ctxt.BuildTags {
 		if tag == name {
@@ -1467,7 +1504,6 @@ func (ctxt *Context) match(name string, allTags map[string]bool) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -1511,28 +1547,19 @@ func (ctxt *Context) goodOSArchFile(name string, allTags map[string]bool) bool {
 			allTags[l[n-2]] = true
 			allTags[l[n-1]] = true
 		}
-		if l[n-1] != ctxt.GOARCH {
-			return false
-		}
-		if ctxt.GOOS == "android" && l[n-2] == "linux" {
-			return true
-		}
-		return l[n-2] == ctxt.GOOS
+		return ctxt.matchTag(l[n-1], false) && ctxt.matchTag(l[n-2], false)
 	}
 	if n >= 1 && knownOS[l[n-1]] {
 		if allTags != nil {
 			allTags[l[n-1]] = true
 		}
-		if ctxt.GOOS == "android" && l[n-1] == "linux" {
-			return true
-		}
-		return l[n-1] == ctxt.GOOS
+		return ctxt.matchTag(l[n-1], false)
 	}
 	if n >= 1 && knownArch[l[n-1]] {
 		if allTags != nil {
 			allTags[l[n-1]] = true
 		}
-		return l[n-1] == ctxt.GOARCH
+		return ctxt.matchTag(l[n-1], false)
 	}
 	return true
 }

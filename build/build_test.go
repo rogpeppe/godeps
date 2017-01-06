@@ -48,6 +48,15 @@ func TestMatch(t *testing.T) {
 	match(runtime.GOOS+","+runtime.GOARCH+",!bar", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "bar": true})
 	nomatch(runtime.GOOS+","+runtime.GOARCH+",bar", map[string]bool{runtime.GOOS: true, runtime.GOARCH: true, "bar": true})
 	nomatch("!", map[string]bool{})
+
+	ctxt.MatchTag = func(tag string, neg bool) bool {
+		return tag != "ignore" || neg
+	}
+	match("foo,bar", map[string]bool{"foo": true, "bar": true})
+	match("foo,!bar", map[string]bool{"foo": true, "bar": true})
+	match("!bar", map[string]bool{"bar": true})
+	nomatch("ignore", map[string]bool{"ignore": true})
+	match("!ignore", map[string]bool{"ignore": true})
 }
 
 func TestDotSlashImport(t *testing.T) {
