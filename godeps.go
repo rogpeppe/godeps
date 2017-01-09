@@ -26,7 +26,8 @@ import (
 
 var (
 	revFile       = flag.String("u", "", "update dependencies")
-	testDeps      = flag.Bool("t", false, "include testing dependencies")
+	_             = flag.Bool("t", true, "(deprecated, superceded by -T) include testing dependencies")
+	noTestDeps    = flag.Bool("T", false, "do not include testing dependencies")
 	printCommands = flag.Bool("x", false, "show executed commands")
 	dryRun        = flag.Bool("n", false, "print but do not execute update commands")
 	_             = flag.Bool("f", true, "(deprecated, superceded by -F) when updating, try to fetch deps if the update fails")
@@ -99,7 +100,7 @@ func main() {
 			pkgs = []string{"."}
 		}
 		pkgs = gotool.ImportPaths(pkgs)
-		for _, info := range list(pkgs, *testDeps) {
+		for _, info := range list(pkgs, !*noTestDeps) {
 			fmt.Println(info)
 		}
 	}
