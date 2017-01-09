@@ -1473,10 +1473,7 @@ func (ctxt *Context) matchTag(name string, neg bool) bool {
 	if ctxt.MatchTag != nil {
 		return ctxt.MatchTag(name, neg)
 	}
-	if neg {
-		return !ctxt.DefaultMatchTag(name)
-	}
-	return ctxt.DefaultMatchTag(name)
+	return ctxt.DefaultMatchTag(name) != neg
 }
 
 // DefaultMatchTag reports whether the given name matches the given
@@ -1574,6 +1571,16 @@ func init() {
 	for _, v := range strings.Fields(goarchList) {
 		knownArch[v] = true
 	}
+}
+
+// KnownOS reports whether the argument is the name of known OS.
+func KnownOS(os string) bool {
+	return knownOS[os]
+}
+
+// KnownArch reports whether the argument is the name of a known architecture.
+func KnownArch(arch string) bool {
+	return knownArch[arch]
 }
 
 // ToolDir is the directory containing build tools.
