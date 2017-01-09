@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kisielk/gotool"
+	"gopkg.in/errgo.v1"
 
 	"github.com/rogpeppe/godeps/build"
 	"github.com/rogpeppe/godeps/pkgrepo"
@@ -38,7 +39,17 @@ var (
 var (
 	exitCode = 0
 
-	buildContext = build.Default
+	buildContext = func() build.Context {
+		ctx := build.Default
+		ctx.MatchTag = func(tag string, neg bool) bool {
+			if build.KnownOS(tag) || build.KnownArch(tag) {
+				return true
+			}
+			// Fall back to default settings for all other tags.
+			return ctx.DefaultMatchTag(tag) != neg
+		}
+		return ctx
+	}()
 
 	// current working directory.
 	cwd = "."
@@ -300,7 +311,7 @@ func list(pkgs []string, testDeps bool) []*depInfo {
 	}
 	walkDeps(pkgs, testDeps, func(pkg *build.Package, err error) bool {
 		if err != nil {
-			errorf("cannot import %q: %v", pkg.ImportPath, err)
+			errorf("%v", err)
 			return false
 		}
 		if !findVCSInfo(pkg.Dir, infoByDir) && !ignoreDirs[pkg.Dir] {
@@ -524,11 +535,11 @@ func walkDeps(paths []string, includeTests bool, visit func(*build.Package, erro
 		visit:   visit,
 	}
 	for _, path := range paths {
-		ctxt.walkDeps(path, cwd, includeTests)
+		ctxt.walkDeps(path, cwd, includeTests, "")
 	}
 }
 
-func (ctxt *walkContext) walkDeps(pkgPath string, fromDir string, includeTests bool) {
+func (ctxt *walkContext) walkDeps(pkgPath string, fromDir string, includeTests bool, parentPkg string) {
 	if pkgPath == "C" {
 		return
 	}
@@ -549,6 +560,9 @@ func (ctxt *walkContext) walkDeps(pkgPath string, fromDir string, includeTests b
 	// at the moment.
 	pkg, err := buildContext.Import(pkgPath, fromDir, 0)
 	ctxt.checked[pkg.ImportPath] = true
+	if err != nil && parentPkg != "" {
+		err = errgo.Notef(err, "cannot import from %q", parentPkg)
+	}
 	descend := ctxt.visit(pkg, err)
 	if err != nil || !descend {
 		return
@@ -561,7 +575,7 @@ func (ctxt *walkContext) walkDeps(pkgPath string, fromDir string, includeTests b
 		allImports = append(allImports, pkg.XTestImports...)
 	}
 	for _, impPath := range allImports {
-		ctxt.walkDeps(impPath, pkg.Dir, false)
+		ctxt.walkDeps(impPath, pkg.Dir, false, pkgPath)
 	}
 }
 
