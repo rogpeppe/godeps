@@ -23,14 +23,14 @@ than one line for the same package root. If a specified revision is not
 currently available, godeps will attempt to fetch it, unless the -F flag
 is provided.
 
-	-F	when updating, do not try to fetch deps if the update fails
-	-N	when updating, only update if the dependency is newer
-	-P int
-		max number of concurrent updates (default 1)
-	-force-clean
-		force cleaning of modified-but-not-committed repositories. Do not use this flag unless you really need to!
-	-n	print but do not execute update commands
-	-t	include testing dependencies
-	-u string
-		update dependencies
-	-x	show executed commands
+     -F	when updating, do not try to fetch deps if the update fails
+     -N	when updating, only update if the dependency is newer
+     -P int
+       	max number of concurrent updates (default 1)
+     -T	do not include testing dependencies
+     -force-clean
+       	force cleaning of modified-but-not-committed repositories. Do not use this flag unless you really need to!
+     -n	print but do not execute update commands
+     -u string
+       	update dependencies
+     -x	show executed commands
