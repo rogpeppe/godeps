@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/kisielk/gotool"
-	"gopkg.in/errgo.v1"
 
 	"github.com/rogpeppe/godeps/build"
 	"github.com/rogpeppe/godeps/pkgrepo"
@@ -562,7 +561,7 @@ func (ctxt *walkContext) walkDeps(pkgPath string, fromDir string, includeTests b
 	pkg, err := buildContext.Import(pkgPath, fromDir, 0)
 	ctxt.checked[pkg.ImportPath] = true
 	if err != nil && parentPkg != "" {
-		err = errgo.Notef(err, "cannot import from %q", parentPkg)
+		err = fmt.Errorf("cannot import from %q: %v", parentPkg, err)
 	}
 	descend := ctxt.visit(pkg, err)
 	if err != nil || !descend {
