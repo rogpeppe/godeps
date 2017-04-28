@@ -129,14 +129,19 @@ func update(file string) {
 			delete(projects, proj)
 			continue
 		}
+		noUpdateNeeded := currentInfo.revid == info.revid || *ifNewer && !info.newer(currentInfo)
 		if !currentInfo.clean {
 			if !*forceClean {
-				errorf("%q is not clean; will not update", info.dir)
+				if noUpdateNeeded {
+					errorf("%q is not clean", info.dir)
+				} else {
+					errorf("%q is not clean; will not update", info.dir)
+				}
 				delete(projects, proj)
 				continue
 			}
 		}
-		if currentInfo.revid == info.revid || *ifNewer && !info.newer(currentInfo) {
+		if noUpdateNeeded {
 			// No need to update.
 			delete(projects, proj)
 		}
