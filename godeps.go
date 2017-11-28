@@ -31,7 +31,7 @@ var (
 	dryRun        = flag.Bool("n", false, "print but do not execute update commands")
 	_             = flag.Bool("f", true, "(deprecated, superceded by -F) when updating, try to fetch deps if the update fails")
 	noFetch       = flag.Bool("F", false, "when updating, do not try to fetch deps if the update fails")
-	parallel      = flag.Int("P", 1, "max number of concurrent updates")
+	parallel      = flag.Int("P", 15, "max number of concurrent updates")
 	forceClean    = flag.Bool("force-clean", false, "force cleaning of modified-but-not-committed repositories. Do not use this flag unless you really need to!")
 	ifNewer       = flag.Bool("N", false, "when updating, only update if the dependency is newer")
 )
