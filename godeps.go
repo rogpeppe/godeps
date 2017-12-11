@@ -107,9 +107,21 @@ func main() {
 }
 
 func update(file string) {
-	projects, err := parseDepFile(file)
+	var depList []*depInfo
+	var err error
+	if strings.HasSuffix(file, ".lock") {
+		// It looks like a dep lock file - parse it as a dep Gopkg.lock TOML file.
+		depList, err = parseTOMLLockFile(file)
+	} else {
+		depList, err = parseDepsFile(file)
+	}
 	if err != nil {
 		errorf("cannot parse %q: %v", file, err)
+		return
+	}
+	projects, err := getProjects(depList)
+	if err != nil {
+		errorf("cannot get project info: %v", err)
 		return
 	}
 	// First get info on all the projects, make sure their working
@@ -245,20 +257,9 @@ func createRepo(info *depInfo) error {
 	return nil
 }
 
-func parseDepFile(file string) (map[string]*depInfo, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+func getProjects(depList []*depInfo) (map[string]*depInfo, error) {
 	deps := make(map[string]*depInfo)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		info, err := parseDepInfo(line)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse %q: %v", line, err)
-		}
+	for _, info := range depList {
 		if deps[info.project] != nil {
 			return nil, fmt.Errorf("project %q has more than one entry", info.project)
 		}
@@ -267,6 +268,7 @@ func parseDepFile(file string) (map[string]*depInfo, error) {
 		if len(gopath) == 0 {
 			return nil, fmt.Errorf("GOPATH not set")
 		}
+		var err error
 		info.dir, err = projectToDir(info.project, gopath)
 		if err != nil {
 			if err != errProjectNotFound {
@@ -278,7 +280,44 @@ func parseDepFile(file string) (map[string]*depInfo, error) {
 			// $GOPATH, so set the directory to that.
 			info.dir = filepath.Join(gopath[0], "src", filepath.FromSlash(info.project))
 			info.notThere = true
+		} else if info.vcs == nil {
+			// No VCS info, probably because the info has come from a Gopkg.lock
+			// file which doesn't specify the VCS type.
+			var foundVCS []VCS
+			for metaDir, vcs := range metadataDirs {
+				dirInfo, err := os.Stat(filepath.Join(info.dir, metaDir))
+				if err != nil || !dirInfo.IsDir() {
+					continue
+				}
+				foundVCS = append(foundVCS, vcs)
+			}
+			if len(foundVCS) == 0 {
+				return nil, fmt.Errorf("cannot determine VCS in %q", info.dir)
+			}
+			if len(foundVCS) > 1 {
+				return nil, fmt.Errorf("ambiguous VCS in %q", info.dir)
+			}
+			info.vcs = foundVCS[0]
 		}
+	}
+	return deps, nil
+}
+
+func parseDepsFile(file string) ([]*depInfo, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var deps []*depInfo
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		info, err := parseDepInfo(line)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse %q: %v", line, err)
+		}
+		deps = append(deps, info)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read error: %v", err)
