@@ -198,6 +198,9 @@ func updateProject(info *depInfo) error {
 			return fmt.Errorf("cannot clean: %v", err)
 		}
 	}
+	if info.vcs == nil {
+		return fmt.Errorf("no VCS info available")
+	}
 	err := info.vcs.Update(info.dir, info.revid)
 	if err == nil || *noFetch {
 		return nil
