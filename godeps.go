@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/kisielk/gotool"
+	"golang.org/x/tools/go/vcs"
 
 	"github.com/rogpeppe/godeps/build"
-	"github.com/rogpeppe/godeps/pkgrepo"
 )
 
 var (
@@ -232,11 +232,11 @@ func createRepo(info *depInfo) error {
 	//
 	// Instead, we use code abstracted from the go tool to do the
 	// job.
-	root, err := pkgrepo.Root(info.project)
+	root, err := vcs.RepoRootForImportPath(info.project, *printCommands)
 	if err != nil {
 		return fmt.Errorf("cannot find project root: %v", err)
 	}
-	if string(root.VCS) != info.vcs.Kind() {
+	if root.VCS.Cmd != info.vcs.Kind() {
 		return fmt.Errorf("project has unexpected VCS kind %s; want %s", root.VCS, info.vcs.Kind())
 	}
 
